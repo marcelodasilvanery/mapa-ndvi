@@ -6,6 +6,7 @@
     <title>Mapa NDVI - Análise de Solo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #map { height: 100vh; width: 100vw; background-color: #f1f1f1; }
@@ -27,8 +28,10 @@
     <div id="map"></div>
 
     <script>
-        const SUPABASE_URL = 'https://fpdtvvhpnxdktsnoolejo.supabase.co/rest/v1';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20';
+        const supabase = window.supabase.createClient(
+            'https://fpdtvvhpnxdktsnoolejo.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'
+        );
 
         const urlParams = new URLSearchParams(window.location.search);
         const talhaoId = urlParams.get('id');
@@ -36,84 +39,82 @@
         if (!talhaoId) {
             document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: Link inválido (Falta o ID).</div>';
         } else {
-            fetch(`${SUPABASE_URL}/talhoes?id=eq.${talhaoId}&select=*,clientes(nome)`, {
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
-            })
-            .then(response => {
-                if (!response.ok) throw new Error('Erro de conexão: ' + response.status);
-                return response.json();
-            })
-            .then(data => {
-                document.getElementById('loading').style.display = 'none';
+            supabase
+                .from('talhoes')
+                .select('*, clientes(nome)')
+                .eq('id', talhaoId)
+                .then(({ data, error }) => {
+                    if (error) throw error;
 
-                if (data.length === 0) {
-                    document.getElementById('loading').style.display = 'flex';
-                    document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: ID não encontrado no banco de dados.</div>';
-                    return;
-                }
+                    document.getElementById('loading').style.display = 'none';
 
-                const talhao = data[0];
-                const geom = talhao.geom;
-                const imagemBase64 = talhao.imagem_ndvi;
-                const nomeTalhao = talhao.codigo_talhao;
-                const nomeCliente = talhao.clientes.nome;
-
-                const map = L.map('map').setView([-20.92, -49.65], 14);
-                
-                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                    attribution: 'Esri', maxZoom: 19
-                }).addTo(map);
-
-                const geoJsonLayer = L.geoJSON(geom, {
-                    style: function(feature) {
-                        return { color: 'white', weight: 3, fillColor: 'transparent', fillOpacity: 0 };
-                    },
-                    onEachFeature: function(feature, layer) {
-                        layer.bindPopup(`
-                            <div style="width: 220px; font-family: Arial;">
-                                <h3 style="color: #2E7D32; margin: 0 0 5px 0;">${nomeCliente}</h3>
-                                <b>Talhão:</b> ${nomeTalhao}<br>
-                                <hr style="border: 1px solid #eee; margin: 5px 0;">
-                                <small><i>NDVI Sentinel-2</i></small>
-                            </div>
-                        `);
+                    if (data.length === 0) {
+                        document.getElementById('loading').style.display = 'flex';
+                        document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: ID não encontrado no banco de dados.</div>';
+                        return;
                     }
-                }).addTo(map);
 
-                // Bounds calculado fora do if para estar disponível em todos os caminhos
-                const tempLayer = L.geoJSON(geom);
-                const bounds = tempLayer.getBounds();
+                    const talhao = data[0];
+                    const geom = talhao.geom;
+                    const imagemBase64 = talhao.imagem_ndvi;
+                    const nomeTalhao = talhao.codigo_talhao;
+                    const nomeCliente = talhao.clientes.nome;
 
-                if (imagemBase64 && imagemBase64.length > 50) {
-                    const imageUrl = 'data:image/png;base64,' + imagemBase64;
-                    L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(map);
-                } else {
+                    const map = L.map('map').setView([-20.92, -49.65], 14);
+                    
+                    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                        attribution: 'Esri', maxZoom: 19
+                    }).addTo(map);
+
+                    const geoJsonLayer = L.geoJSON(geom, {
+                        style: function(feature) {
+                            return { color: 'white', weight: 3, fillColor: 'transparent', fillOpacity: 0 };
+                        },
+                        onEachFeature: function(feature, layer) {
+                            layer.bindPopup(`
+                                <div style="width: 220px; font-family: Arial;">
+                                    <h3 style="color: #2E7D32; margin: 0 0 5px 0;">${nomeCliente}</h3>
+                                    <b>Talhão:</b> ${nomeTalhao}<br>
+                                    <hr style="border: 1px solid #eee; margin: 5px 0;">
+                                    <small><i>NDVI Sentinel-2</i></small>
+                                </div>
+                            `);
+                        }
+                    }).addTo(map);
+
+                    const tempLayer = L.geoJSON(geom);
+                    const bounds = tempLayer.getBounds();
+
+                    if (imagemBase64 && imagemBase64.length > 50) {
+                        const imageUrl = 'data:image/png;base64,' + imagemBase64;
+                        L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(map);
+                    } else {
+                        document.getElementById('loading').style.display = 'flex';
+                        document.getElementById('loading').innerHTML = `
+                            <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
+                                <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI em processamento ou ausente.</h2>
+                                <p>O talhão <b>${nomeTalhao}</b> foi encontrado e a geometria está correta, mas a foto do NDVI dele ainda está sendo gerada pelo servidor.</p>
+                                <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
+                            </div>
+                            <br>
+                            <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
+                        `;
+                    }
+
+                    map.fitBounds(bounds, { padding: [20, 20] });
+                })
+                .catch(error => {
                     document.getElementById('loading').style.display = 'flex';
                     document.getElementById('loading').innerHTML = `
-                        <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
-                            <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI em processamento ou ausente.</h2>
-                            <p>O talhão <b>${nomeTalhao}</b> foi encontrado e a geometria está correta, mas a foto do NDVI dele ainda está sendo gerada pelo servidor.</p>
-                            <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
+                        <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
+                            <h2 style="color: #d32f2f; margin-top: 0;">Erro de Conexão</h2>
+                            <p>Não foi possível buscar os dados no servidor neste momento.</p>
+                            <p><small>Erro: ${error.message || 'Erro desconhecido'}</small></p>
                         </div>
                         <br>
-                        <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
+                        <button onclick="location.reload()" style="padding: 10px 20px; background: #d32f2f; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
                     `;
-                }
-
-                map.fitBounds(bounds, { padding: [20, 20] });
-            })
-            .catch(error => {
-                document.getElementById('loading').style.display = 'flex';
-                document.getElementById('loading').innerHTML = `
-                    <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
-                        <h2 style="color: #d32f2f; margin-top: 0;">Erro de Conexão</h2>
-                        <p>Não foi possível buscar os dados no servidor neste momento.</p>
-                        <p><small>Erro: ${error.message || 'Erro desconhecido'}</small></p>
-                    </div>
-                    <br>
-                    <button onclick="location.reload()" style="padding: 10px 20px; background: #d32f2f; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
-                `;
-            });
+                });
         }
     </script>
 </body>
