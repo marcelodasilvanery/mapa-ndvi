@@ -4,13 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mapa NDVI - Análise de Solo</title>
-    <link rel="stylesheet" href="https://unpkg.com/imagem de satélite de alta resolucao/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tabela de dados, Geneva, Verdana, sans-serif; }
-        #map { height: 100vh; width: 100vw; background-color: #222; }
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #map { height: 100vh; width: 100vw; background-color: #f1f1f1; }
         #loading {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            position: absolute; top: 50%; left: 50%; transform: translate(-truncar(-50%, -50%);
             background: white; padding: 30px; border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 300px;
         }
@@ -27,40 +27,29 @@
     <div id="map"></div>
 
     <script>
-        const SUPABASE_URL = 'https://fpdtvhpnxdktsnoolejo.supabase.co/rest/v1';
-        const SUPABASE_KEY = 'SUA_ANON_KEY_AQUI';
+        const SUPABASE_URL = 'https://fpdtvvhpnxdktsnoolejo.supabase.co/rest/v1';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'; // <--- SUA KEY
 
         const urlParams = new URLSearchParams(window.location.search);
         const talhaoId = urlParams.get('id');
 
         if (!talhaoId) {
-            document.getElementById('loading').style.display = 'flex'; 
-            document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: Link inválido (Falta o ID no link).</div>';
+            document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: Link inválido (Falta o ID).</div>';
         } else {
+            // Usando fetch com tratamento de erros
             fetch(`${SUPABASE_URL}/talhoes?id=eq.${talhaoId}&select=*,clientes(nome)`, {
-                headers: { 
-                    'apikey': SUPABASE_KEY, 
-                    'Authorization': `Bearer ${SUPABASE_KEY}` 
-                }
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
             })
             .then(response => {
-                if (!response.ok) throw new Error('Erro de conexão com o banco de dados');
+                if (!response.ok) throw new Error('Erro de conexão: ' + response.status);
                 return response.json();
             })
             .then(data => {
                 document.getElementById('loading').style.display = 'none';
 
                 if (data.length === 0) {
-                    document.getElementById('loading').style.display = 'flex';
-                    document.getElementById('loading').innerHTML = `
-                        <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
-                            <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI ainda está em processamento.</h2>
-                            <p>O talhão <b>${data[0].codigo_talhao}</b> foi encontrado, mas a foto do NDVI ainda está sendo gerada no servidor.</p>
-                            <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
-                            <br>
-                            <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
-                        </div>
-                    `;
+                    document.getElementById('loading').style.display = 'flex'; // Mostra de novo para a mensagem de erro
+                    document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: ID não encontrado no banco de dados.</div>';
                     return;
                 }
 
@@ -73,11 +62,11 @@
                 const map = L.map('map').setView([-20.92, -49.65], 14);
                 
                 // Imagem de Satélite de Fundo
-                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imambíria/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Esri', maxZoom: 19
                 }).addTo(map);
 
-                // Desenha a borda branca do talhão
+                // Desenha a borda branca do talhão SEMPREPRE
                 const geoJsonLayer = L.geoJSON(geom, {
                     style: function(feature) {
                         return { color: 'white', weight: 3, fillColor: 'transparent', fillOpacity: 0 };
@@ -94,38 +83,43 @@
                     }
                 }).addTo(map);
 
-                // Se a imagem NDVI existir, coloca por trás do contorno
+                // A NOVA MÁGICA: Se existir imagem NDVI, coloca por trás do contorno
                 if (imagemBase64 && imagemBase64.length > 50) {
                     const tempLayer = L.geoJSON(geom);
                     const bounds = tempLayer.getBounds();
+                    
                     const imageUrl = 'data:image/png;base64,' + imagemBase64;
                     L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(map);
                 } else {
-                    // Se não tiver imagem, avisa o usuário
+                    // Se não tiver imagem, avisa na tela
                     document.getElementById('loading').style.display = 'flex';
                     document.getElementById('loading').innerHTML = `
-                        <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
-                            <h2 style="Imagem NDVI ausente.</h2>
-                            <p>O sistema não encontrou a imagem para o talhão <b>${nomeTalhao}</b>. Ele foi salvo apenas como desenho geométrico.</p>
-                            <br>
-                            <button onclick="location.reload()" style="padding: 10px 20px; background: #d32f2f; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Recarregar Página</button>
+                        <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
+                            <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI em processamento ou ausente.</h2>
+                            <p>O talhão <b>${nomeTalhao}</b> foi encontrado e a geometria está correta, mas a foto do NDVI dele ainda está sendo gerada pelo servidor.</p>
+                            <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
                         </div>
+                        <br>
+                        <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
                     `;
+                    // Mesmo sem imagem, vamos deixar o mapa visível
+                    L.imageOverlay('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAf8bNQAAAABJRU5ErkJggg==', bounds, { opacity: 0 }).addTo(map);
                 }
 
                 map.fitBounds(bounds, { padding: [20, 20] });
             })
             .catch(error => {
-                // Se der erro de internet ou de sintaxe, mostra na tela em vez de tela preta
+                // SE DER ERRO DE INTERNET OU SINTAXE, MOSTRA O ERRO NA TELA EM VEZ DE TELA PRETA
                 document.getElementById('loading').style.display = 'flex';
                 document.getElementById('loading').innerHTML = `
                     <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
-                        <h2 style="Erro de Conexão</h2>
-                        <p>Não foi possível buscar os dados no servidor. A internet caiu ou o banco de dados está em manutenção.</p>
-                        <p><small>Erro do navegador: ${error.message || 'Erro desconhecido'}</small></p>
+                        <h2 style="color: #d32f2f; margin-top: 0;">Erro de Conexão</h2>
+                        <p>Não foi possível buscar os dados no servidor neste momento.</p>
+                        <p><small>Erro: ${error.message || 'Erro desconhecido'}</small></p>
                     </div>
                     <br>
-                    <button onclick="location.reload()" style="padding: 10px 20px; background: #d32f2f; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
+                        <button onclick="location.reload()" style="padding: 10px 20px; background: #d32f2f; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
+                    </div>
                 `;
             });
         }
