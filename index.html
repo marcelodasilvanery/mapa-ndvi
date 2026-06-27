@@ -22,28 +22,44 @@
 <body>
     <div id="loading">
         <div class="spinner"></div>
-        <div style="font-size: 18px; color: #333;">Processando dados do satélite...</div>
+        <div id="loading-texto" style="font-size: 18px; color: #333;">Processando dados do satélite...</div>
         <div style="font-size: 12px; color: #888;">Aguarde um instante</div>
     </div>
     <div id="map"></div>
 
     <script>
+        // Desliga TODAS as conexões extras (auth, realtime) que podem travar
         const supabase = window.supabase.createClient(
             'https://fpdtvvhpnxdktsnoolejo.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20',
+            {
+                auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+                realtime: { enabled: false }
+            }
         );
 
         const urlParams = new URLSearchParams(window.location.search);
         const talhaoId = urlParams.get('id');
 
+        // TIMEOUT DE SEGURANÇA: Se não responder em 10 segundos, força erro
+        const timeout = setTimeout(() => {
+            document.getElementById('loading-texto').innerHTML = `
+                <span style="color: #d32f2f; font-weight: bold;">BLOQUEIO DE REDE DETECTADO</span><br><br>
+                <span style="font-size: 14px; color: #333;">Seu navegador ou rede está bloqueando a conexão com o Supabase.</span><br>
+                <span style="font-size: 12px; color: #888;">Teste desligar VPN, adblocker ou tente outra rede (ex: celular).</span>
+            `;
+        }, 10000);
+
         if (!talhaoId) {
+            clearTimeout(timeout);
             document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: Link inválido (Falta o ID).</div>';
         } else {
             supabase
                 .from('talhoes')
-                .select('*, clientes(nome)')
+                .select('id, codigo_talhao, geom, imagem_ndvi')
                 .eq('id', talhaoId)
                 .then(({ data, error }) => {
+                    clearTimeout(timeout);
                     if (error) throw error;
 
                     document.getElementById('loading').style.display = 'none';
@@ -58,7 +74,6 @@
                     const geom = talhao.geom;
                     const imagemBase64 = talhao.imagem_ndvi;
                     const nomeTalhao = talhao.codigo_talhao;
-                    const nomeCliente = talhao.clientes.nome;
 
                     const map = L.map('map').setView([-20.92, -49.65], 14);
                     
@@ -66,14 +81,14 @@
                         attribution: 'Esri', maxZoom: 19
                     }).addTo(map);
 
-                    const geoJsonLayer = L.geoJSON(geom, {
+                    L.geoJSON(geom, {
                         style: function(feature) {
                             return { color: 'white', weight: 3, fillColor: 'transparent', fillOpacity: 0 };
                         },
                         onEachFeature: function(feature, layer) {
                             layer.bindPopup(`
                                 <div style="width: 220px; font-family: Arial;">
-                                    <h3 style="color: #2E7D32; margin: 0 0 5px 0;">${nomeCliente}</h3>
+                                    <h3 style="color: #2E7D32; margin: 0 0 5px 0;">Cliente</h3>
                                     <b>Talhão:</b> ${nomeTalhao}<br>
                                     <hr style="border: 1px solid #eee; margin: 5px 0;">
                                     <small><i>NDVI Sentinel-2</i></small>
@@ -82,19 +97,17 @@
                         }
                     }).addTo(map);
 
-                    const tempLayer = L.geoJSON(geom);
-                    const bounds = tempLayer.getBounds();
+                    const bounds = L.geoJSON(geom).getBounds();
 
                     if (imagemBase64 && imagemBase64.length > 50) {
-                        const imageUrl = 'data:image/png;base64,' + imagemBase64;
-                        L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(map);
+                        L.imageOverlay('data:image/png;base64,' + imagemBase64, bounds, { opacity: 0.9 }).addTo(map);
                     } else {
                         document.getElementById('loading').style.display = 'flex';
                         document.getElementById('loading').innerHTML = `
                             <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
                                 <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI em processamento ou ausente.</h2>
-                                <p>O talhão <b>${nomeTalhao}</b> foi encontrado e a geometria está correta, mas a foto do NDVI dele ainda está sendo gerada pelo servidor.</p>
-                                <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
+                                <p>O talhão <b>${nomeTalhao}</b> foi encontrado, mas a imagem NDVI ainda está sendo gerada.</p>
+                                <p><small>Tente novamente em alguns minutos.</small></p>
                             </div>
                             <br>
                             <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
@@ -104,11 +117,11 @@
                     map.fitBounds(bounds, { padding: [20, 20] });
                 })
                 .catch(error => {
+                    clearTimeout(timeout);
                     document.getElementById('loading').style.display = 'flex';
                     document.getElementById('loading').innerHTML = `
                         <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
                             <h2 style="color: #d32f2f; margin-top: 0;">Erro de Conexão</h2>
-                            <p>Não foi possível buscar os dados no servidor neste momento.</p>
                             <p><small>Erro: ${error.message || 'Erro desconhecido'}</small></p>
                         </div>
                         <br>
