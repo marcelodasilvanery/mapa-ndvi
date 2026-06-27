@@ -28,9 +28,14 @@
     <div id="map"></div>
 
     <script>
+        // URL CORRETA (sem o "V" extra) e Chave do Projeto NDVI
         const supabase = window.supabase.createClient(
             'https://fpdtvhpnxdktsoolejo.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20',
+            {
+                auth: { autoRefreshToken: false, persistSession: false },
+                realtime: { enabled: false }
+            }
         );
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -41,7 +46,7 @@
         } else {
             supabase
                 .from('talhoes')
-                .select('id, codigo_talhao, geom, imagem_ndvi')
+                .select('*, clientes(nome)')
                 .eq('id', talhaoId)
                 .then(({ data, error }) => {
                     if (error) throw error;
@@ -58,6 +63,7 @@
                     const geom = talhao.geom;
                     const imagemBase64 = talhao.imagem_ndvi;
                     const nomeTalhao = talhao.codigo_talhao;
+                    const nomeCliente = talhao.clientes ? talhao.clientes.nome : 'Cliente';
 
                     const map = L.map('map').setView([-20.92, -49.65], 14);
                     
@@ -72,7 +78,7 @@
                         onEachFeature: function(feature, layer) {
                             layer.bindPopup(`
                                 <div style="width: 220px; font-family: Arial;">
-                                    <h3 style="color: #2E7D32; margin: 0 0 5px 0;">Cliente</h3>
+                                    <h3 style="color: #2E7D32; margin: 0 0 5px 0;">${nomeCliente}</h3>
                                     <b>Talhão:</b> ${nomeTalhao}<br>
                                     <hr style="border: 1px solid #eee; margin: 5px 0;">
                                     <small><i>NDVI Sentinel-2</i></small>
