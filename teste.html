@@ -28,9 +28,14 @@
     <div id="map"></div>
 
     <script>
+        // URL CORRETA (sem o "V" extra) e Chave do Projeto NDVI
         const supabase = window.supabase.createClient(
-            'https://fpdtvvhpnxdktsnoolejo.supabase.co',
-            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'
+            'https://fpdtvhpnxdktsoolejo.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20',
+            {
+                auth: { autoRefreshToken: false, persistSession: false },
+                realtime: { enabled: false }
+            }
         );
 
         const urlParams = new URLSearchParams(window.location.search);
@@ -39,10 +44,9 @@
         if (!talhaoId) {
             document.getElementById('loading').innerHTML = '<div style="color:red;">Erro: Link inválido (Falta o ID).</div>';
         } else {
-            // MUDANÇA AQUI: Tirei o "clientes(nome)" para testar
             supabase
                 .from('talhoes')
-                .select('*')
+                .select('*, clientes(nome)')
                 .eq('id', talhaoId)
                 .then(({ data, error }) => {
                     if (error) throw error;
@@ -59,8 +63,7 @@
                     const geom = talhao.geom;
                     const imagemBase64 = talhao.imagem_ndvi;
                     const nomeTalhao = talhao.codigo_talhao;
-                    // MUDANÇA AQUI: Peguei o nome direto do talhão se existir, senão "Cliente"
-                    const nomeCliente = talhao.nome_cliente || 'Cliente';
+                    const nomeCliente = talhao.clientes ? talhao.clientes.nome : 'Cliente';
 
                     const map = L.map('map').setView([-20.92, -49.65], 14);
                     
@@ -68,7 +71,7 @@
                         attribution: 'Esri', maxZoom: 19
                     }).addTo(map);
 
-                    const geoJsonLayer = L.geoJSON(geom, {
+                    L.geoJSON(geom, {
                         style: function(feature) {
                             return { color: 'white', weight: 3, fillColor: 'transparent', fillOpacity: 0 };
                         },
@@ -84,19 +87,17 @@
                         }
                     }).addTo(map);
 
-                    const tempLayer = L.geoJSON(geom);
-                    const bounds = tempLayer.getBounds();
+                    const bounds = L.geoJSON(geom).getBounds();
 
                     if (imagemBase64 && imagemBase64.length > 50) {
-                        const imageUrl = 'data:image/png;base64,' + imagemBase64;
-                        L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(map);
+                        L.imageOverlay('data:image/png;base64,' + imagemBase64, bounds, { opacity: 0.9 }).addTo(map);
                     } else {
                         document.getElementById('loading').style.display = 'flex';
                         document.getElementById('loading').innerHTML = `
                             <div style="background-color: #fff3e0; border-left: 6px solid #ff980f; padding: 20px; text-align: center;">
                                 <h2 style="color: #e65100; margin-top: 0;">Imagem NDVI em processamento ou ausente.</h2>
-                                <p>O talhão <b>${nomeTalhao}</b> foi encontrado e a geometria está correta, mas a foto do NDVI dele ainda está sendo gerada pelo servidor.</p>
-                                <p><small>Tente acessar este link novamente em 5 minutos.</small></p>
+                                <p>O talhão <b>${nomeTalhao}</b> foi encontrado, mas a imagem NDVI ainda está sendo gerada.</p>
+                                <p><small>Tente novamente em alguns minutos.</small></p>
                             </div>
                             <br>
                             <button onclick="location.reload()" style="padding: 10px 20px; background: #2E7D32; color: white; border: none; border-radius: 5px; font-size: 16px; cursor: pointer;">Tentar Novamente</button>
@@ -110,7 +111,6 @@
                     document.getElementById('loading').innerHTML = `
                         <div style="background-color: #ffebee; border-left: 6px solid #d32f2f; padding: 20px; text-align: center;">
                             <h2 style="color: #d32f2f; margin-top: 0;">Erro de Conexão</h2>
-                            <p>Não foi possível buscar os dados no servidor neste momento.</p>
                             <p><small>Erro: ${error.message || 'Erro desconhecido'}</small></p>
                         </div>
                         <br>
