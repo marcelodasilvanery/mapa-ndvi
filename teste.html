@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h3>Teste de Conexão Supabase</h3>
+<div id="resultado">Conectando...</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    const supabase = window.supabase.createClient(
+        'https://fpdtvvhpnxdktsnoolejo.supabase.co',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwZHR2aHBueGRrdHNub29sZWpvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMjMzNzcsImV4cCI6MjA5Nzc5OTM3N30.UrItw_5TsLsI9lNWeiwg45XF2s-zvcaVs1suMHs1A20'
+    );
+
+    supabase.from('talhoes').select('id, codigo_talhao').limit(1)
+        .then(({ data, error }) => {
+            if (error) {
+                document.getElementById('resultado').textContent = 'ERRO: ' + error.message;
+            } else {
+                document.getElementById('resultado').textContent = 'SUCESSO: ' + JSON.stringify(data);
+            }
+        })
+        .catch(e => {
+            document.getElementById('resultado').textContent = 'FALHOU: ' + e.message;
+        });
+</script>
+</body>
+</html>
