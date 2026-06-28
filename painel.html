@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Painel de Talhões NDVI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-950 text-white min-h-screen p-4">
+    <div class="max-w-md mx-auto">
+        <div class="text-center mb-6">
+            <div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">N</div>
+            <h1 class="text-xl font-bold">Painel NDVI</h1>
+            <p class="text-gray-500 text-sm">Clique no talhão para abrir o mapa</p>
+        </div>
+        
+        <div id="loading" class="text-center text-gray-500 py-10">Buscando talhões no servidor...</div>
+        <div id="lista-talhoes" class="space-y-4"></div>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+
+        // Busca só o que importa para a lista (sem a imagem pesada e sem a geometria)
+        fetch(`${SUPABASE_URL}/talhoes?select=id,codigo_talhao,imagem_ndvi,clientes(nome)&order=id.desc`, {
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
+        })
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            
+            if (data.length === 0) {
+                document.getElementById('lista-talhoes').innerHTML = '<p class="text-center text-gray-600">Nenhum talhão cadastrado ainda.</p>';
+                return;
+            }
+
+            // Agrupar talhões por cliente
+            const clientes = {};
+            data.forEach(talhao => {
+                const nomeCliente = talhao.clientes?.nome || 'Cliente Desconhecido';
+                if (!clientes[nomeCliente]) clientes[nomeCliente] = [];
+                clientes[nomeCliente].push(talhao);
+            });
+
+            let htmlFinal = '';
+
+            for (const [nomeCliente, talhoes] of Object.entries(clientes)) {
+                htmlFinal += `
+                    <div>
+                        <h2 class="text-green-400 font-bold text-base mb-2 border-b border-gray-800 pb-2">
+                            🌾 ${nomeCliente} (${talhoes.length})
+                        </h2>
+                        <div class="space-y-2 mb-6">
+                `;
+
+                talhoes.forEach(talhao => {
+                    const temImagem = talhao.imagem_ndvi && talhao.imagem_ndvi.length > 50;
+                    const statusBadge = temImagem 
+                        ? '<span class="text-xs bg-green-900 text-green-300 px-2 py-0.5 rounded-full">NDVI Pronto</span>' 
+                        : '<span class="text-xs bg-yellow-900 text-yellow-300 px-2 py-0.5 rounded-full">Pendente</span>';
+
+                    htmlFinal += `
+                        <a href="index.html?v=13&id=${talhao.id}" class="block bg-gray-900 border border-gray-800 p-3 rounded-lg hover:border-green-600 transition-all">
+                            <div class="flex items-center justify-between">
+                                <span class="font-medium text-sm">${talhao.codigo_talhao}</span>
+                                ${statusBadge}
+                            </div>
+                            <div class="text-gray-600 text-xs mt-1">Clique para ver no mapa</div>
+                        </a>
+                    `;
+                });
+
+                htmlFinal += `</div></div>`;
+            }
+
+            document.getElementById('lista-talhoes').innerHTML = htmlFinal;
+        })
+        .catch(error => {
+            document.getElementById('loading').innerHTML = `<p class="text-red-400 text-sm">Erro ao carregar: ${error.message}</p>`;
+        });
+    </script>
+</body>
+</html>
