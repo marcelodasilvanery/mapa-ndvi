@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cadastro de Talhão - Campo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md bg-gray-800 rounded-2xl p-6 shadow-lg border border-gray-700">
+        <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">N</div>
+            <h1 class="text-xl font-bold">Novo Cadastro</h1>
+            <p class="text-gray-400 text-sm">Envie os dados do talhão coletado em campo</p>
+        </div>
+
+        <form id="formCadastro" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Nome do Cliente / Fazenda</label>
+                <input type="text" id="nome" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-green-500 outline-none" placeholder="Ex: Fazenda São José">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">WhatsApp</label>
+                <input type="tel" id="whatsapp" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-green-500 outline-none" placeholder="(XX) XXXXX-XXXX">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-300 mb-1">Arquivo KML ou KMZ do Talhão</label>
+                <input type="file" id="arquivoKml" accept=".kml,.kmz" required class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700 cursor-pointer bg-gray-700 border border-gray-600 rounded-lg">
+            </div>
+
+            <div id="statusMsg" class="text-sm text-center hidden p-3 rounded-lg"></div>
+
+            <button type="submit" id="btnSubmit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center">
+                Enviar e Gerar Mapa
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const supabase = window.supabase.createClient(
+            'https://keiydgyountsuzjybsng.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg'
+        );
+
+        let geomExtraida = null;
+
+        // Lê o arquivo assim que o usuário seleciona
+        document.getElementById('arquivoKml').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const msgEl = document.getElementById('statusMsg');
+            msgEl.classList.remove('hidden');
+            msgEl.className = 'text-sm text-center p-3 rounded-lg bg-blue-900 text-blue-300';
+            msgEl.textContent = 'Lendo arquivo...';
+
+            try {
+                let kmlText = '';
+                if (file.name.endsWith('.kmz')) {
+                    // KMZ é um ZIP contendo um KML
+                    const zip = await JSZip.loadAsync(file);
+                    const kmlFile = Object.keys(zip.files).find(f => f.endsWith('.kml'));
+                    if(!kmlFile) throw new Error("KML não encontrado dentro do KMZ");
+                    kmlText = await zip.files[kmlFile].async('string');
+                } else {
+                    kmlText = await file.text();
+                }
+
+                // Extrair coordenadas do KML
+                const parser = new DOMParser();
+                const kml = parser.parseFromString(kmlText, 'text/xml');
+                const coordsText = kml.getElementsByTagName('coordinates')[0].textContent.trim();
+
+                const coordsArray = coordsText.split(/\s+/).map(coord => {
+                    const [lon, lat] = coord.split(',').map(Number);
+                    return [lon, lat];
+                });
+
+                // Fechar o polígono
+                if (coordsArray[0][0] !== coordsArray[coordsArray.length-1][0]) {
+                    coordsArray.push(coordsArray[0]);
+                }
+
+                geomExtraida = {
+                    "type": "Polygon",
+                    "coordinates": [coordsArray]
+                };
+
+                msgEl.className = 'text-sm text-center p-3 rounded-lg bg-green-900 text-green-300';
+                msgEl.textContent = `✅ Polígono lido com sucesso (${coordsArray.length} pontos)!`;
+            } catch (error) {
+                msgEl.className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
+                msgEl.textContent = 'Erro ao ler o arquivo: ' + error.message;
+                geomExtraida = null;
+            }
+        });
+
+        // Enviar o formulário
+        document.getElementById('formCadastro').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!geomExtraida) {
+                alert('Selecione um arquivo KML/KMZ válido primeiro.');
+                return;
+            }
+
+            const btn = document.getElementById('btnSubmit');
+            const msgEl = document.getElementById('statusMsg');
+            btn.disabled = true;
+            btn.textContent = 'Enviando...';
+            msgEl.classList.add('hidden');
+
+            const nome = document.getElementById('nome').value;
+            const whatsapp = document.getElementById('whatsapp').value;
+
+            try {
+                // 1. Cadastrar Cliente
+                const resCliente = await supabase.from('clientes').insert({ nome: nome, whatsapp: whatsapp }).select('id').single();
+                const clienteId = resCliente.data.id;
+
+                // 2. Cadastrar Talhão usando o nome como código
+                const idTalhao = crypto.randomUUID();
+                const resTalhao = await supabase.from('talhoes').insert({
+                    id: idTalhao,
+                    codigo_talhao: nome.substring(0, 20),
+                    geom: geomExtraida,
+                    cliente_id: clienteId
+                }).select();
+
+                // 3. Sucesso!
+                msgEl.classList.remove('hidden');
+                msgEl.className = 'text-sm text-center p-3 rounded-lg bg-green-900 text-green-200';
+                msgEl.innerHTML = `
+                    <b>✅ Cadastro Realizado no Banco!</b><br><br>
+                    Agora o sistema precisa processar a imagem de satélite.<br>
+                    <b>Link do Mapa (abra após rodar o Python):</b><br>
+                    <a href="https://marcelodasilvanery.github.io/mapa-ndvi/?v=9&id=${idTalhao}" target="_blank" class="underline text-green-400 break-all">
+                        Clique aqui para ver o Mapa
+                    </a>
+                `;
+                btn.textContent = 'Enviado com Sucesso';
+
+            } catch (error) {
+                msgEl.classList.remove('hidden');
+                msgEl.className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
+                msgEl.textContent = 'Erro ao salvar: ' + error.message;
+                btn.disabled = false;
+                btn.textContent = 'Tentar Novamente';
+            }
+        });
+    </script>
+</body>
+</html>
