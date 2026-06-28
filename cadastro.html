@@ -16,7 +16,8 @@
             <p class="text-gray-400 text-sm">Envie os dados do talhão coletado em campo</p>
         </div>
 
-        <form id="formCadastro" class="space-y-4">
+        <!-- ONSUBMIT="RETURN FALSE" IMPEDE A PÁGINA DE RECARREGAR DE QUALQUER JEITO -->
+        <form id="formCadastro" onsubmit="return false;" class="space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-300 mb-1">Nome do Cliente / Fazenda</label>
                 <input type="text" id="nome" required class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-green-500 outline-none" placeholder="Ex: Fazenda São José">
@@ -34,13 +35,20 @@
 
             <div id="statusMsg" class="text-sm text-center hidden p-3 rounded-lg"></div>
 
-            <button type="submit" id="btnSubmit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center">
+            <button type="button" id="btnSubmit" onclick="enviarDados()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition duration-200 flex justify-center items-center">
                 Enviar e Gerar Mapa
             </button>
         </form>
     </div>
 
     <script>
+        // Verifica se as bibliotecas carregaram
+        if (typeof JSZip === 'undefined' || typeof window.supabase === 'undefined') {
+            document.getElementById('statusMsg').classList.remove('hidden');
+            document.getElementById('statusMsg').className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
+            document.getElementById('statusMsg').innerHTML = 'Erro: As bibliotecas demoraram para carregar. <b>Recarregue a página (Ctrl+Shift+R).</b>';
+        }
+
         const supabase = window.supabase.createClient(
             'https://keiydgyountsuzjybsng.supabase.co',
             'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg'
@@ -56,12 +64,11 @@
             const msgEl = document.getElementById('statusMsg');
             msgEl.classList.remove('hidden');
             msgEl.className = 'text-sm text-center p-3 rounded-lg bg-blue-900 text-blue-300';
-            msgEl.textContent = 'Lendo arquivo...';
+            msgEl.textContent = 'Lendo arquivo... Aguarde.';
 
             try {
                 let kmlText = '';
                 if (file.name.endsWith('.kmz')) {
-                    // KMZ é um ZIP contendo um KML
                     const zip = await JSZip.loadAsync(file);
                     const kmlFile = Object.keys(zip.files).find(f => f.endsWith('.kml'));
                     if(!kmlFile) throw new Error("KML não encontrado dentro do KMZ");
@@ -70,7 +77,6 @@
                     kmlText = await file.text();
                 }
 
-                // Extrair coordenadas do KML
                 const parser = new DOMParser();
                 const kml = parser.parseFromString(kmlText, 'text/xml');
                 const coordsText = kml.getElementsByTagName('coordinates')[0].textContent.trim();
@@ -80,7 +86,6 @@
                     return [lon, lat];
                 });
 
-                // Fechar o polígono
                 if (coordsArray[0][0] !== coordsArray[coordsArray.length-1][0]) {
                     coordsArray.push(coordsArray[0]);
                 }
@@ -91,7 +96,7 @@
                 };
 
                 msgEl.className = 'text-sm text-center p-3 rounded-lg bg-green-900 text-green-300';
-                msgEl.textContent = `✅ Polígono lido com sucesso (${coordsArray.length} pontos)!`;
+                msgEl.textContent = 'Polígono lido com sucesso (' + coordsArray.length + ' pontos)!';
             } catch (error) {
                 msgEl.className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
                 msgEl.textContent = 'Erro ao ler o arquivo: ' + error.message;
@@ -99,19 +104,20 @@
             }
         });
 
-        // Enviar o formulário
-        document.getElementById('formCadastro').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        // Função separada para enviar
+        async function enviarDados() {
+            const msgEl = document.getElementById('statusMsg');
+            const btn = document.getElementById('btnSubmit');
             
             if (!geomExtraida) {
-                alert('Selecione um arquivo KML/KMZ válido primeiro.');
+                msgEl.classList.remove('hidden');
+                msgEl.className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
+                msgEl.textContent = 'Selecione um arquivo KML/KMZ válido primeiro!';
                 return;
             }
 
-            const btn = document.getElementById('btnSubmit');
-            const msgEl = document.getElementById('statusMsg');
             btn.disabled = true;
-            btn.textContent = 'Enviando...';
+            btn.textContent = 'Enviando para o servidor...';
             msgEl.classList.add('hidden');
 
             const nome = document.getElementById('nome').value;
@@ -120,9 +126,10 @@
             try {
                 // 1. Cadastrar Cliente
                 const resCliente = await supabase.from('clientes').insert({ nome: nome, whatsapp: whatsapp }).select('id').single();
+                if(resCliente.error) throw new Error("Erro ao salvar cliente: " + resCliente.error.message);
                 const clienteId = resCliente.data.id;
 
-                // 2. Cadastrar Talhão usando o nome como código
+                // 2. Cadastrar Talhão
                 const idTalhao = crypto.randomUUID();
                 const resTalhao = await supabase.from('talhoes').insert({
                     id: idTalhao,
@@ -131,27 +138,29 @@
                     cliente_id: clienteId
                 }).select();
 
+                if(resTalhao.error) throw new Error("Erro ao salvar talhão: " + resTalhao.error.message);
+
                 // 3. Sucesso!
                 msgEl.classList.remove('hidden');
                 msgEl.className = 'text-sm text-center p-3 rounded-lg bg-green-900 text-green-200';
                 msgEl.innerHTML = `
-                    <b>✅ Cadastro Realizado no Banco!</b><br><br>
-                    Agora o sistema precisa processar a imagem de satélite.<br>
-                    <b>Link do Mapa (abra após rodar o Python):</b><br>
-                    <a href="https://marcelodasilvanery.github.io/mapa-ndvi/?v=9&id=${idTalhao}" target="_blank" class="underline text-green-400 break-all">
+                    <b>SUCESSO! Cadastro salvo no banco.</b><br><br>
+                    Agora rode o <b>Python em lote</b> no computador para gerar a imagem de satélite.<br><br>
+                    <b>Link do Mapa:</b><br>
+                    <a href="https://marcelodasilvanery.github.io/mapa-ndvi/?v=10&id=${idTalhao}" target="_blank" class="underline text-green-400 break-all text-xs">
                         Clique aqui para ver o Mapa
                     </a>
                 `;
-                btn.textContent = 'Enviado com Sucesso';
+                btn.textContent = 'Cadastro Concluído';
 
             } catch (error) {
                 msgEl.classList.remove('hidden');
                 msgEl.className = 'text-sm text-center p-3 rounded-lg bg-red-900 text-red-300';
-                msgEl.textContent = 'Erro ao salvar: ' + error.message;
+                msgEl.textContent = 'Erro: ' + error.message;
                 btn.disabled = false;
                 btn.textContent = 'Tentar Novamente';
             }
-        });
+        }
     </script>
 </body>
 </html>
