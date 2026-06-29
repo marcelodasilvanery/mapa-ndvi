@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa NDVI - Análise de Solo</title>
+    <title>Mapa NDVI - Diagnóstico</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #111827; color: white; }
         #map { height: 100vh; width: 100vw; display: none; }
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 300px; display: none; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 350px; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2E7D32; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .lista-container { max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; }
@@ -33,7 +33,6 @@
         .barra-conteudo { max-width: 500px; margin: 0 auto; display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: center; }
         .input-data { background: #374151; border: 1px solid #4b5563; border-radius: 8px; padding: 8px; color: white; font-size: 14px; width: 180px; }
         .botao-historico { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; white-space: nowrap; }
-        .botao-historico:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
         .status-msg { margin-top: 8px; font-size: 12px; color: #9ca3af; text-align: center; min-height: 16px; }
     </style>
 </head>
@@ -68,9 +67,6 @@
     <div id="map"></div>
 
     <script>
-        // ============================================================
-        // CHAVE CORRETA — única, declarada uma vez, usada em todo lugar
-        // ============================================================
         const SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
 
@@ -79,16 +75,12 @@
             'Authorization': 'Bearer ' + SUPABASE_KEY
         };
 
-        // ============================================================
-        // ESTADO
-        // ============================================================
         let mapaAtual = null;
         let idsSelecionados = [];
         let layersImagem = [];
-        let dadosTalhoes = []; // cache dos dados completos
 
         // ============================================================
-        // 1. CARREGAR LISTA DE TALHÕES
+        // DIAGNÓSTICO: Tenta buscar e mostra o erro REAL na tela
         // ============================================================
         document.getElementById('loading').style.display = 'flex';
 
@@ -96,7 +88,12 @@
             headers: HEADERS
         })
         .then(function(res) {
-            if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
+            // Se der erro, mostra o status e a mensagem do Supabase na tela
+            if (!res.ok) {
+                return res.text().then(function(textoErro) {
+                    throw new Error('HTTP ' + res.status + ': ' + textoErro);
+                });
+            }
             return res.json();
         })
         .then(function(data) {
@@ -108,45 +105,32 @@
                 return;
             }
 
-            dadosTalhoes = data;
             let html = '';
-
             data.forEach(function(t) {
                 const badge = t.tem_ndvi
                     ? '<span class="badge badge-pronto">Pronto</span>'
                     : '<span class="badge badge-pendente">Pendente</span>';
-
                 html += '<div class="card" onclick="abrirMapa(\'' + t.id + '\')">' +
                     '<input type="checkbox" class="checkbox" onclick="toggleSelect(\'' + t.id + '\', this)">' +
                     '<span class="nome-talhao">' + t.codigo_talhao + '</span>' +
-                    badge +
-                    '</div>';
+                    badge + '</div>';
             });
-
-            // CORRIGIDO: lista-talhoes (não lista-talhaoes)
             document.getElementById('lista-talhoes').innerHTML = html;
         })
         .catch(function(e) {
+            // Em vez de travar, mostra EXATAMENTE o que o Supabase respondeu
             document.getElementById('loading').innerHTML =
-                '<div style="background-color:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;">' +
-                '<div style="color:#d32f2f;font-size:16px;margin-bottom:5px;">Erro de Conexão</div>' +
-                '<div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
+                '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;">' +
+                '<div style="color:#ef4444;font-size:16px;margin-bottom:10px;font-weight:bold;">Erro de Conexão</div>' +
+                '<div style="color:#d1d5db;font-size:12px;word-break:break-all;background:#111827;padding:10px;border-radius:6px;">' + e.message + '</div>' +
+                '<div style="color:#9ca3af;font-size:11px;margin-top:10px;">Copie esta mensagem e envie ao desenvolvedor.</div>' +
+                '</div>';
         });
 
-        // ============================================================
-        // 2. SELEÇÃO DE TALHÕES
-        // ============================================================
         function toggleSelect(id, checkbox) {
             event.stopPropagation();
-            if (checkbox.checked) {
-                idsSelecionados.push(id);
-            } else {
-                idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; });
-            }
-            atualizarBotao();
-        }
-
-        function atualizarBotao() {
+            if (checkbox.checked) idsSelecionados.push(id);
+            else idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; });
             var btn = document.getElementById('botao-mapa');
             if (idsSelecionados.length > 0) {
                 btn.classList.add('visivel');
@@ -156,31 +140,17 @@
             }
         }
 
-        // ============================================================
-        // 3. ABRIR MAPA
-        // ============================================================
-        function abrirMapaSelecionados() {
-            if (idsSelecionados.length > 0) abrirMapaVarios(idsSelecionados);
-        }
-
-        function abrirMapa(idUnico) {
-            abrirMapaVarios([idUnico]);
-        }
+        function abrirMapaSelecionados() { if (idsSelecionados.length > 0) abrirMapaVarios(idsSelecionados); }
+        function abrirMapa(idUnico) { abrirMapaVarios([idUnico]); }
 
         function abrirMapaVarios(ids) {
             document.getElementById('loading').style.display = 'flex';
-            document.getElementById('loading').innerHTML =
-                '<div class="spinner"></div>' +
-                '<div style="font-size:18px;color:#333;">Carregando imagens NDVI...</div>' +
-                '<div style="font-size:12px;color:#888;">Aguarde um instante</div>';
+            document.getElementById('loading').innerHTML = '<div class="spinner"></div><div style="font-size:18px;color:#333;">Carregando imagens...</div>';
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('barra-tempo').classList.add('visivel');
-            document.getElementById('status-msg').innerText = '';
             document.getElementById('tela-lista').style.display = 'none';
 
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', {
-                headers: HEADERS
-            })
+            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', { headers: HEADERS })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
                 return res.json();
@@ -189,57 +159,31 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('map').style.display = 'block';
                 document.getElementById('botao-voltar').classList.add('visivel');
-
-                if (!data || data.length === 0) {
-                    alert('Nenhum talhão encontrado.');
-                    return;
-                }
-
+                if (!data || data.length === 0) { alert('Nenhum talhão encontrado.'); return; }
                 if (mapaAtual) mapaAtual.remove();
                 mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
-
-                L.tileLayer(
-                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                    { attribution: 'Esri', maxZoom: 19 }
-                ).addTo(mapaAtual);
-
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(mapaAtual);
                 var boundsGeral = L.latLngBounds([]);
                 layersImagem = [];
-
                 data.forEach(function(t) {
                     var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
-                    var geoJsonLayer = L.geoJSON(geom, {
-                        style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 }
-                    });
-                    geoJsonLayer.addTo(mapaAtual);
-                    boundsGeral.extend(geoJsonLayer.getBounds());
-
+                    var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
+                    gLayer.addTo(mapaAtual);
+                    boundsGeral.extend(gLayer.getBounds());
                     if (t.imagem_ndvi && t.imagem_ndvi.length > 50) {
-                        var imgLayer = L.imageOverlay(
-                            'data:image/png;base64,' + t.imagem_ndvi,
-                            geoJsonLayer.getBounds(),
-                            { opacity: 0.9 }
-                        );
-                        imgLayer.addTo(mapaAtual);
-                        layersImagem.push(imgLayer);
+                        var iLayer = L.imageOverlay('data:image/png;base64,' + t.imagem_ndvi, gLayer.getBounds(), { opacity: 0.9 });
+                        iLayer.addTo(mapaAtual);
+                        layersImagem.push(iLayer);
                     }
                 });
-
                 mapaAtual.fitBounds(boundsGeral, { padding: [50, 20] });
                 setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
             })
             .catch(function(e) {
-                document.getElementById('loading').style.display = 'flex';
-                document.getElementById('loading').innerHTML =
-                    '<div style="background-color:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;">' +
-                    '<div style="color:#d32f2f;font-size:16px;margin-bottom:5px;">Erro</div>' +
-                    '<div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
+                document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;margin-bottom:5px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
             });
         }
 
-        // ============================================================
-        // 4. VOLTAR PARA LISTA
-        // ============================================================
         function voltarParaLista() {
             document.getElementById('map').style.display = 'none';
             document.getElementById('tela-lista').style.display = 'block';
@@ -250,125 +194,8 @@
             layersImagem = [];
         }
 
-        // ============================================================
-        // 5. HISTÓRICO (desabilitado até ter o Apps Script pronto)
-        // ============================================================
         function buscarHistorico() {
-            var data = document.getElementById('input-data').value;
-            if (!data) return alert("Selecione uma data.");
-
-            var btn = document.getElementById('btn-historico');
-            var status = document.getElementById('status-msg');
-
-            // TODO: Substitua pela URL real do seu Apps Script deployado como Web App
-            var APPS_SCRIPT_URL = '';
-
-            if (!APPS_SCRIPT_URL) {
-                status.innerText = '⚠️ Função de histórico ainda não configurada.';
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerText = 'Processando...';
-            status.innerText = '1/3 Conectando ao satélite...';
-
-            fetch(APPS_SCRIPT_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ ids: idsSelecionados, data: data })
-            })
-            .then(function(res) {
-                if (!res.ok) throw new Error('Erro na requisição: ' + res.status);
-                return res.json();
-            })
-            .then(function(resultado) {
-                if (resultado.erro) throw new Error(resultado.erro);
-                status.innerText = '2/3 Recortando imagens...';
-                recortarImagens(resultado.imagem, resultado.talhoes).then(function(imagensRecortadas) {
-                    status.innerText = '3/3 Atualizando mapa...';
-                    layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); });
-                    layersImagem = [];
-
-                    imagensRecortadas.forEach(function(img) {
-                        var geom = typeof img.geom === 'string' ? JSON.parse(img.geom) : img.geom;
-                        var layer = L.imageOverlay(
-                            'data:image/png;base64,' + img.imagem,
-                            L.geoJSON(geom).getBounds(),
-                            { opacity: 0.9 }
-                        );
-                        layer.addTo(mapaAtual);
-                        layersImagem.push(layer);
-                    });
-
-                    status.innerText = '✅ Histórico de ' + data + ' carregado!';
-                    btn.disabled = false;
-                    btn.innerText = '📅 Buscar Histórico';
-                    setTimeout(function() { status.innerText = ''; }, 4000);
-                });
-            })
-            .catch(function(e) {
-                status.innerText = 'Erro: ' + e.message;
-                btn.disabled = false;
-                btn.innerText = '📅 Buscar Histórico';
-            });
-        }
-
-        function recortarImagens(imagemBase64, talhoes) {
-            return new Promise(function(resolve) {
-                var img = new Image();
-                img.onload = function() {
-                    var canvas = document.createElement('canvas');
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    var ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0); // CORRIGIDO: era "trapacei os pontos"
-
-                    var resultados = [];
-                    talhoes.forEach(function(talhao) {
-                        var geom = typeof talhao.geom === 'string' ? JSON.parse(talhao.geom) : talhao.geom;
-                        var coords = geom.coordinates[0];
-                        var minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
-
-                        coords.forEach(function(c) {
-                            if (c[0] < minLon) minLon = c[0];
-                            if (c[0] > maxLon) maxLon = c[0];
-                            if (c[1] < minLat) minLat = c[1];
-                            if (c[1] > maxLat) maxLat = c[1];
-                        });
-
-                        var pixelCoords = coords.map(function(c) {
-                            return [
-                                (c[0] - minLon) / (maxLon - minLon) * (canvas.width - 1),
-                                (maxLat - c[1]) / (maxLat - minLat) * (canvas.height - 1)
-                            ];
-                        });
-
-                        var tempCanvas = document.createElement('canvas');
-                        var tempCtx = tempCanvas.getContext('2d');
-                        tempCanvas.width = canvas.width;
-                        tempCanvas.height = canvas.height;
-                        tempCtx.drawImage(canvas, 0, 0); // CORRIGIDO: era "trapacei os pontos"
-
-                        tempCtx.globalCompositeOperation = 'destination-in';
-                        tempCtx.beginPath();
-                        tempCtx.moveTo(pixelCoords[0][0], pixelCoords[0][1]);
-                        for (var i = 1; i < pixelCoords.length; i++) {
-                            tempCtx.lineTo(pixelCoords[i][0], pixelCoords[i][1]);
-                        }
-                        tempCtx.closePath();
-                        tempCtx.fill();
-
-                        resultados.push({
-                            id: talhao.id,
-                            geom: geom,
-                            imagem: tempCanvas.toDataURL('image/png').replace('data:image/png;base64,', '')
-                        });
-                    });
-
-                    resolve(resultados);
-                };
-                img.src = 'data:image/png;base64,' + imagemBase64;
-            });
+            alert('Função de histórico será configurada em breve.');
         }
     </script>
 </body>
