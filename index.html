@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mapa NDVI - Diagnóstico</title>
+    <title>Mapa NDVI</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -39,27 +39,27 @@
 <body>
     <div id="loading">
         <div class="spinner"></div>
-        <div style="font-size: 18px; color: #333;">Processando dados do satélite...</div>
+        <div style="font-size: 18px; color: #333;">Buscando talhoes...</div>
         <div style="font-size: 12px; color: #888;">Aguarde um instante</div>
     </div>
 
-    <button id="botao-voltar" onclick="voltarParaLista()">← Voltar à lista</button>
+    <button id="botao-voltar" onclick="voltarParaLista()">← Voltar</button>
 
     <div class="lista-container" id="tela-lista">
         <div class="header">
             <div class="header-circle">N</div>
             <h1 style="margin: 0;">Painel NDVI</h1>
-            <p style="color: #9ca3af; margin-top: 5px;">Selecione talhões para agrupar no mapa</p>
+            <p style="color: #9ca3af; margin-top: 5px;">Selecione talhoes para ver no mapa</p>
         </div>
         <div id="lista-talhoes">Carregando...</div>
     </div>
 
-    <button id="botao-mapa" onclick="abrirMapaSelecionados()">Ver 0 selecionados no Mapa</button>
+    <button id="botao-mapa" onclick="abrirMapaSelecionados()">Ver 0 no Mapa</button>
 
     <div id="barra-tempo">
         <div class="barra-conteudo">
             <input type="date" id="input-data" class="input-data">
-            <button id="btn-historico" class="botao-historico" onclick="buscarHistorico()">📅 Buscar Histórico</button>
+            <button id="btn-historico" class="botao-historico" onclick="buscarHistorico()">Buscar Historico</button>
         </div>
         <div id="status-msg" class="status-msg"></div>
     </div>
@@ -67,77 +67,54 @@
     <div id="map"></div>
 
     <script>
-        const SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+        var SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
+        var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
 
-        const HEADERS = {
-            'apikey': SUPABASE_KEY,
-            'Authorization': 'Bearer ' + SUPABASE_KEY
-        };
+        var mapaAtual = null;
+        var idsSelecionados = [];
+        var layersImagem = [];
 
-        let mapaAtual = null;
-        let idsSelecionados = [];
-        let layersImagem = [];
-
-        // ============================================================
-        // DIAGNÓSTICO: Tenta buscar e mostra o erro REAL na tela
-        // ============================================================
         document.getElementById('loading').style.display = 'flex';
 
         fetch(SUPABASE_URL + '/talhoes?select=id,codigo_talhao,tem_ndvi,geom&order=codigo_talhao.asc', {
-            headers: HEADERS
+            headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
         })
         .then(function(res) {
-            // Se der erro, mostra o status e a mensagem do Supabase na tela
             if (!res.ok) {
-                return res.text().then(function(textoErro) {
-                    throw new Error('HTTP ' + res.status + ': ' + textoErro);
+                return res.text().then(function(texto) {
+                    throw new Error('HTTP ' + res.status + ' - ' + texto);
                 });
             }
             return res.json();
         })
         .then(function(data) {
             document.getElementById('loading').style.display = 'none';
-
             if (!data || data.length === 0) {
-                document.getElementById('lista-talhoes').innerHTML =
-                    '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhão encontrado.</p>';
+                document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhao encontrado.</p>';
                 return;
             }
-
-            let html = '';
-            data.forEach(function(t) {
-                const badge = t.tem_ndvi
-                    ? '<span class="badge badge-pronto">Pronto</span>'
-                    : '<span class="badge badge-pendente">Pendente</span>';
+            var html = '';
+            for (var i = 0; i < data.length; i++) {
+                var t = data[i];
+                var badge = t.tem_ndvi ? '<span class="badge badge-pronto">Pronto</span>' : '<span class="badge badge-pendente">Pendente</span>';
                 html += '<div class="card" onclick="abrirMapa(\'' + t.id + '\')">' +
                     '<input type="checkbox" class="checkbox" onclick="toggleSelect(\'' + t.id + '\', this)">' +
                     '<span class="nome-talhao">' + t.codigo_talhao + '</span>' +
                     badge + '</div>';
-            });
+            }
             document.getElementById('lista-talhoes').innerHTML = html;
         })
         .catch(function(e) {
-            // Em vez de travar, mostra EXATAMENTE o que o Supabase respondeu
-            document.getElementById('loading').innerHTML =
-                '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;">' +
-                '<div style="color:#ef4444;font-size:16px;margin-bottom:10px;font-weight:bold;">Erro de Conexão</div>' +
-                '<div style="color:#d1d5db;font-size:12px;word-break:break-all;background:#111827;padding:10px;border-radius:6px;">' + e.message + '</div>' +
-                '<div style="color:#9ca3af;font-size:11px;margin-top:10px;">Copie esta mensagem e envie ao desenvolvedor.</div>' +
-                '</div>';
+            document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro ao conectar</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
         });
 
         function toggleSelect(id, checkbox) {
             event.stopPropagation();
-            if (checkbox.checked) idsSelecionados.push(id);
-            else idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; });
+            if (checkbox.checked) { idsSelecionados.push(id); } 
+            else { idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; }); }
             var btn = document.getElementById('botao-mapa');
-            if (idsSelecionados.length > 0) {
-                btn.classList.add('visivel');
-                btn.innerText = 'Ver ' + idsSelecionados.length + ' selecionados no Mapa';
-            } else {
-                btn.classList.remove('visivel');
-            }
+            if (idsSelecionados.length > 0) { btn.classList.add('visivel'); btn.innerText = 'Ver ' + idsSelecionados.length + ' no Mapa'; } 
+            else { btn.classList.remove('visivel'); }
         }
 
         function abrirMapaSelecionados() { if (idsSelecionados.length > 0) abrirMapaVarios(idsSelecionados); }
@@ -145,12 +122,14 @@
 
         function abrirMapaVarios(ids) {
             document.getElementById('loading').style.display = 'flex';
-            document.getElementById('loading').innerHTML = '<div class="spinner"></div><div style="font-size:18px;color:#333;">Carregando imagens...</div>';
+            document.getElementById('loading').innerHTML = '<div class="spinner"></div><div style="font-size:18px;color:#333;">Carregando mapa...</div>';
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('barra-tempo').classList.add('visivel');
             document.getElementById('tela-lista').style.display = 'none';
 
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', { headers: HEADERS })
+            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', {
+                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
+            })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
                 return res.json();
@@ -159,13 +138,14 @@
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('map').style.display = 'block';
                 document.getElementById('botao-voltar').classList.add('visivel');
-                if (!data || data.length === 0) { alert('Nenhum talhão encontrado.'); return; }
+                if (!data || data.length === 0) { alert('Nenhum talhao encontrado.'); return; }
                 if (mapaAtual) mapaAtual.remove();
                 mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
                 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(mapaAtual);
                 var boundsGeral = L.latLngBounds([]);
                 layersImagem = [];
-                data.forEach(function(t) {
+                for (var i = 0; i < data.length; i++) {
+                    var t = data[i];
                     var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
                     var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
                     gLayer.addTo(mapaAtual);
@@ -175,12 +155,12 @@
                         iLayer.addTo(mapaAtual);
                         layersImagem.push(iLayer);
                     }
-                });
+                }
                 mapaAtual.fitBounds(boundsGeral, { padding: [50, 20] });
                 setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
             })
             .catch(function(e) {
-                document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;margin-bottom:5px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
+                document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
             });
         }
 
@@ -195,7 +175,7 @@
         }
 
         function buscarHistorico() {
-            alert('Função de histórico será configurada em breve.');
+            alert('Funcao de historico sera configurada em breve.');
         }
     </script>
 </body>
