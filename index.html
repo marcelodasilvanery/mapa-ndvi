@@ -161,12 +161,8 @@
             status.innerText = "1/3 Conectando ao satélite europeu...";
 
             try {
-                // 1. Pede a imagem bruta para o Google Apps Script
-                const resposta = await fetch(APPS_SCRIPT_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain' },
-                    body: JSON.stringify({ ids: idsSelecionados, data: data })
-                });
+                               // 1. Pede a imagem bruta para o Google Apps Script (via GET na URL)
+                const resposta = await fetch(`${APPS_SCRIPT_URL}?payload=${encodeURIComponent(JSON.stringify({ ids: idsSelecionados, data: data }))}`);
                 
                 const resultado = await resposta.json();
                 
