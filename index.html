@@ -15,7 +15,6 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         input[type="checkbox"] { appearance: none; width: 20px; height: 20px; border: 2px solid #4B5563; border-radius: 4px; background: #1F2937; cursor: pointer; flex-shrink: 0; }
         input[type="checkbox"]:checked { background: #16A34A; border-color: #16A34A; background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='white' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e"); }
-        /* Estilos da Barra do Tempo */
         #barra-tempo { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; transition: transform 0.3s; }
         #barra-tempo.escondida { transform: translateY(100%); }
     </style>
@@ -51,7 +50,7 @@
         </div>
         <div id="map"></div>
         
-        <!-- BARRA DO TEMPO (MÁQUINA DO TEMPO) -->
+        <!-- BARRA DO TEMPO -->
         <div id="barra-tempo" class="escondida">
             <div class="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 items-center">
                 <div class="flex items-center gap-2 text-sm w-full sm:w-auto">
@@ -69,14 +68,16 @@
     <script>
         const SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+        
+        // SUA URL VERDADEIRA DO APPS SCRIPT
         const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxPr8pC1bOum4_ZDFZSY_GGe0teEmstyrbbOTi5jVC-W9zvqshm8xAsyfoRcis4soVu/exec';
 
         let mapaAtual = null;
         let idsSelecionados = [];
-        let layersImagem = []; // Controla as imagens no mapa para poder trocar
+        let layersImagem = [];
 
-        // Define a data de hoje como padrão
-        document.getElementById('input-data').value = new Date().toISOString().split('T')[0];
+        // Data máxima amanhã para não buscar futuro
+        document.getElementById('input-data').max = new Date().toISOString().split('T')[0];
 
         function atualizarBotao() {
             const btn = document.getElementById('btn-flutuante');
@@ -148,7 +149,7 @@
         }
 
         // ==========================================
-        // A MÁQUINA DO TEMPO (Lógica do Histórico)
+        // A MÁQUINA DO TEMPO
         // ==========================================
         async function buscarHistorico() {
             const data = document.getElementById('input-data').value;
@@ -161,8 +162,11 @@
             status.innerText = "1/3 Conectando ao satélite europeu...";
 
             try {
-                               // 1. Pede a imagem bruta para o Google Apps Script (via GET na URL)
-                const resposta = await fetch(`${APPS_SCRIPT_URL}?payload=${encodeURIComponent(JSON.stringify({ ids: idsSelecionados, data: data }))}`);
+                const resposta = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain' },
+                    body: JSON.stringify({ ids: idsSelecionados, data: data })
+                });
                 
                 const resultado = await resposta.json();
                 
@@ -170,10 +174,8 @@
                 
                 status.innerText = "2/3 Recortando imagens no celular (pode levar até 1 min)...";
 
-                // 2. Recorta as imagens no próprio celular usando Canvas
                 const imagensRecortadas = await recortarImagensNoCelular(resultado.imagem, resultado.talhoes);
 
-                // 3. Troca as imagens no mapa
                 status.innerText = "3/3 Atualizando mapa...";
                 layersImagem.forEach(layer => mapaAtual.removeLayer(layer));
                 layersImagem = [];
@@ -194,7 +196,6 @@
             }
         }
 
-        // MAGIA: Recorta a imagem bruta exatamente dentro dos talhões usando processador do celular
         function recortarImagensNoCelular(imagemBase64, talhoes) {
             return new Promise((resolve) => {
                 const img = new Image();
@@ -225,7 +226,6 @@
                         tempCanvas.height = canvas.height;
                         tempCtx.drawImage(canvas, 0, 0);
 
-                        // Máscara de recorte perfeita
                         tempCtx.globalCompositeOperation = 'destination-in';
                         tempCtx.beginPath();
                         tempCtx.moveTo(pixelCoords[0][0], pixelCoords[0][1]);
