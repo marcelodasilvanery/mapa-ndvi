@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mapa NDVI - Análise de Solo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1. <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -24,7 +25,7 @@
     <div id="tela-lista" class="min-h-screen p-4 pb-24">
         <div class="max-w-md mx-auto">
             <div class="text-center mb-6 pt-6">
-                <div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">N</div>
+                <div class="w-14 h-14 bg-green-600 rounded-full flex items-center justify-content mx-auto mb-3 text-xl font-bold">N</div>
                 <h1 class="text-xl font-bold">Painel NDVI</h1>
                 <p class="text-gray-500 text-sm">Selecione talhões para agrupar no mapa</p>
             </div>
@@ -50,7 +51,6 @@
         </div>
         <div id="map"></div>
         
-        <!-- BARRA DO TEMPO -->
         <div id="barra-tempo" class="escondida">
             <div class="max-w-2xl mx-auto flex flex-col sm:flex-row gap-3 items-center">
                 <div class="flex items-center gap-2 text-sm w-full sm:w-auto">
@@ -69,14 +69,13 @@
         const SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
         
-        // SUA URL VERDADEIRA DO APPS SCRIPT
-        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGy6maEzF_z4LqGJVEpSgyrpL1iv_kAFrcrCI6_sXvzNU-GaFbEPeYofpgw_K0Yn6q';
+        // NOVO LINK DO APPS SCRIPT AQUI
+        const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxoFNFXuuJKVE3FgWih4EgZUzanrqjkdn8rWJK1yIbQOETSJR8OqHNoLrSY6z-uB7WT/exec';
 
         let mapaAtual = null;
         let idsSelecionados = [];
         let layersImagem = [];
 
-        // Data máxima amanhã para não buscar futuro
         document.getElementById('input-data').max = new Date().toISOString().split('T')[0];
 
         function atualizarBotao() {
@@ -97,7 +96,7 @@
                 headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}` }
             }).then(res => res.json()).then(data => {
                 document.getElementById('loading-lista').style.display = 'none';
-                if (!data.length) { document.getElementById('lista-talhoes').innerHTML = '<p class="text-center text-gray-600">Nenhum talhão.</p>'; return; }
+                if (!data.length) { document.getElementById('lista-talhaoes').innerHTML = '<p class="text-center text-gray-600">Nenhum talhão.</p>'; return; }
                 const clientes = {};
                 data.forEach(t => { const nome = t.clientes?.nome || 'Desconhecido'; if (!clientes[nome]) clientes[nome] = []; clientes[nome].push(t); });
                 let html = '';
@@ -148,9 +147,6 @@
             }).catch(e => { document.getElementById('loading-mapa').classList.add('hidden'); alert("Erro: " + e.message); });
         }
 
-        // ==========================================
-        // A MÁQUINA DO TEMPO
-        // ==========================================
         async function buscarHistorico() {
             const data = document.getElementById('input-data').value;
             if (!data) return alert("Selecione uma data.");
@@ -181,7 +177,7 @@
                 layersImagem = [];
 
                 imagensRecortadas.forEach(img => {
-                    const layer = L.imageOverlay('data:image/png;base64,' + img.imagem, L.geoJSON(img.geom).getBounds(), { opacity: 0.9 }).addTo(mapaAtual);
+                    const layer = L.imageOverlay('data:image/png;base64,' + img.imagem, L.geoJSON(img.geom).getBounds(), { opacity: 0. } addTo(mapaAtual);
                     layersImagem.push(layer);
                 });
 
