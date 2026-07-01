@@ -13,9 +13,15 @@
         #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 350px; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2E7D32; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
         .lista-container { max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; }
         .header { text-align: center; margin-bottom: 20px; }
         .header-circle { width: 56px; height: 56px; background: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 24px; font-weight: bold; }
+        
+        .topo-acoes { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 0 5px; }
+        .btn-selecionar-todos { background: #374151; color: white; border: 1px solid #4b5563; padding: 8px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; }
+        .btn-selecionar-todos:hover { background: #4b5563; }
+
         .card { background: #1f2937; border: 1px solid #374151; border-radius: 12px; padding: 12px 15px; margin-bottom: 8px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
         .card:active { transform: scale(0.98); }
         .checkbox { appearance: none; width: 22px; height: 22px; border: 2px solid #4B5563; border-radius: 4px; background: #1F2937; cursor: pointer; flex-shrink: 0; }
@@ -24,18 +30,20 @@
         .badge-pronto { background: #166534; color: #bbf7d0; }
         .badge-pendente { background: #713f12; color: #fef08a; }
         .nome-talhao { font-size: 14px; flex-grow: 1; }
+        
         #botao-mapa { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 400px; background: #16a34a; color: white; font-size: 16px; font-weight: bold; padding: 15px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor: pointer; display: none; z-index: 999; }
         #botao-mapa.visivel { display: block; }
+        
         #botao-voltar { position: fixed; top: 15px; left: 15px; background: rgba(17,24,39,0.9); color: white; border: 1px solid #374151; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1001; display: none; font-size: 14px; }
         #botao-voltar.visivel { display: block; }
         
-        /* BARRA DO HISTÓRICO NOVA */
+        /* BARRA DO HISTÓRICO SIMPLIFICADA */
         #barra-historico { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; display: none; text-align: center; }
         #barra-historico.visivel { display: block; }
-        .btn-hist { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; margin: 0 5px; }
-        .btn-hist:disabled { background: #1e3a5f; opacity: 0.5; cursor: not-allowed; }
-        .btn-hist-atual { background: #16a34a; }
-        .info-hist { font-size: 12px; color: #9ca3af; margin-bottom: 10px; }
+        .info-hist { font-size: 16px; font-weight: bold; color: #ffffff; margin-bottom: 10px; }
+        .info-hist span { color: #4ade80; }
+        .btn-hist { background: #2563eb; color: white; border: none; padding: 10px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        .btn-hist:disabled { background: #1e3a5f; opacity: 0.4; cursor: not-allowed; }
     </style>
 </head>
 <body>
@@ -53,16 +61,20 @@
             <h1 style="margin: 0;">Painel NDVI</h1>
             <p style="color: #9ca3af; margin-top: 5px;">Selecione talhoes para ver no mapa</p>
         </div>
+        
+        <div class="topo-acoes">
+            <button class="btn-selecionar-todos" onclick="selecionarTodos()">Marcar Todos</button>
+            <button class="btn-selecionar-todos" onclick="desmarcarTodos()">Desmarcar Todos</button>
+        </div>
+
         <div id="lista-talhoes">Carregando...</div>
     </div>
 
     <button id="botao-mapa" onclick="abrirMapaSelecionados()">Ver 0 no Mapa</button>
 
     <div id="barra-historico">
-        <div class="info-hist" id="info-hist">Imagem Atual</div>
-        <button id="btn-voltar-hist" class="btn-hist" onclick="mudarHistorico(-1)" disabled>&larr; Anterior</button>
-        <button id="btn-atual-hist" class="btn-hist btn-hist-atual" onclick="irParaAtual()">Atual</button>
-        <button id="btn-avancar-hist" class="btn-hist" onclick="mudarHistorico(1)">Próxima &rarr;</button>
+        <div class="info-hist" id="info-hist">Imagem de: <span>--/--/----</span></div>
+        <button id="btn-hist" class="btn-hist" onclick="voltarNoTempo()">&larr; Ver Imagem Anterior</button>
     </div>
 
     <div id="map"></div>
@@ -74,13 +86,14 @@
 
         var mapaAtual = null;
         var idsSelecionados = [];
+        var todosIdsDisponiveis = [];
         var layersImagem = [];
         var dadosMapaAtual = [];
         
-        // Controle do histórico
-        var nivelHistorico = 0; // 0 = Atual, 1 = Hist 1, 2 = Hist 2...
+        // Controle do histórico (0 = Atual, 1 = Hist 1, etc)
+        var nivelHistorico = 0; 
         var colunasHistorico = ['imagem_ndvi', 'img_h1', 'img_h2', 'img_h3', 'img_h4', 'img_h5'];
-        var nomesHistorico = ['Imagem Atual', 'Histórico 1 (Mais recente)', 'Histórico 2', 'Histórico 3', 'Histórico 4', 'Histórico 5 (Mais antigo)'];
+        var colunasData = ['data_ndvi', 'data_h1', 'data_h2', 'data_h3', 'data_h4', 'data_h5'];
 
         document.getElementById('loading').style.display = 'flex';
 
@@ -98,9 +111,10 @@
             var html = '';
             for (var i = 0; i < data.length; i++) {
                 var t = data[i];
+                todosIdsDisponiveis.push(t.id);
                 var badge = t.tem_ndvi ? '<span class="badge badge-pronto">Pronto</span>' : '<span class="badge badge-pendente">Pendente</span>';
                 html += '<div class="card" onclick="abrirMapa(\'' + t.id + '\')">' +
-                    '<input type="checkbox" class="checkbox" onclick="toggleSelect(\'' + t.id + '\', this)">' +
+                    '<input type="checkbox" class="checkbox" id="check-' + t.id + '" onclick="toggleSelect(\'' + t.id + '\', this)">' +
                     '<span class="nome-talhao">' + t.codigo_talhao + '</span>' +
                     badge + '</div>';
             }
@@ -110,10 +124,26 @@
             document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
         });
 
+        function selecionarTodos() {
+            idsSelecionados = [...todosIdsDisponiveis];
+            todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = true; });
+            atualizarBotaoMapa();
+        }
+
+        function desmarcarTodos() {
+            idsSelecionados = [];
+            todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = false; });
+            atualizarBotaoMapa();
+        }
+
         function toggleSelect(id, checkbox) {
             event.stopPropagation();
             if (checkbox.checked) { idsSelecionados.push(id); } 
             else { idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; }); }
+            atualizarBotaoMapa();
+        }
+
+        function atualizarBotaoMapa() {
             var btn = document.getElementById('botao-mapa');
             if (idsSelecionados.length > 0) { btn.classList.add('visivel'); btn.innerText = 'Ver ' + idsSelecionados.length + ' no Mapa'; } 
             else { btn.classList.remove('visivel'); }
@@ -128,17 +158,17 @@
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('barra-historico').classList.add('visivel');
             document.getElementById('tela-lista').style.display = 'none';
-            nivelHistorico = 0; // Sempre começa na atual ao abrir
+            nivelHistorico = 0; // Sempre começa na imagem mais recente
 
-            // Busca TUDO incluindo as colunas de histórico
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,img_h1,img_h2,img_h3,img_h4,img_h5,geom', { headers: HEADERS })
+            // Busca TUDO: imagens atuais, históricas e as DATAS
+            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,data_ndvi,img_h1,data_h1,img_h2,data_h2,img_h3,data_h3,img_h4,data_h4,img_h5,data_h5,geom', { headers: HEADERS })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
                 return res.json();
             })
             .then(function(data) {
                 dadosMapaAtual = data;
-                atualizarBotoesHistorico();
+                atualizarTelaHistorico();
                 renderizarMapa();
             })
             .catch(function(e) {
@@ -161,7 +191,7 @@
             layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); });
             layersImagem = [];
 
-            var colunaAtual = colunasHistorico[nivelHistorico];
+            var colunaImg = colunasHistorico[nivelHistorico];
 
             for (var i = 0; i < dadosMapaAtual.length; i++) {
                 var t = dadosMapaAtual[i];
@@ -170,11 +200,10 @@
                 gLayer.addTo(mapaAtual);
                 boundsGeral.extend(gLayer.getBounds());
                 
-                var dadosImg = t[colunaAtual];
+                var dadosImg = t[colunaImg];
                 var urlImagem = '';
 
                 if (dadosImg && dadosImg.length > 10) {
-                    // Se começa com http, é do Storage. Se não, é Base64
                     if (dadosImg.startsWith('http')) {
                         urlImagem = dadosImg;
                     } else {
@@ -190,25 +219,38 @@
             setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
         }
 
-        function mudarHistorico(direcao) {
-            var novoNivel = nivelHistorico + direcao;
-            if (novoNivel >= 0 && novoNivel <= 5) {
-                nivelHistorico = novoNivel;
-                atualizarBotoesHistorico();
-                renderizarMapa();
+        function voltarNoTempo() {
+            // Só permite voltar se não estiver na mais antiga (5) e se a próxima coluna tiver imagem
+            if (nivelHistorico < 5) {
+                // Verifica se o próximo nível tem imagem no primeiro talhão da lista
+                var proxColuna = colunasHistorico[nivelHistorico + 1];
+                if (dadosMapaAtual[0] && dadosMapaAtual[0][proxColuna]) {
+                    nivelHistorico++;
+                    atualizarTelaHistorico();
+                    renderizarMapa();
+                } else {
+                    alert("Nao existe imagem mais antiga salva para este talhao.");
+                }
             }
         }
 
-        function irParaAtual() {
-            nivelHistorico = 0;
-            atualizarBotoesHistorico();
-            renderizarMapa();
-        }
+        function atualizarTelaHistorico() {
+            var colunaData = colunasData[nivelHistorico];
+            var dataFormatada = '--/--/----';
+            
+            // Pega a data do primeiro talhão selecionado
+            if (dadosMapaAtual[0] && dadosMapaAtual[0][colunaData]) {
+                var dataBanco = dadosMapaAtual[0][colunaData];
+                // Formata de YYYY-MM-DD para DD/MM/YYYY
+                var partes = dataBanco.split('-');
+                dataFormatada = partes[2] + '/' + partes[1] + '/' + partes[0];
+            }
 
-        function atualizarBotoesHistorico() {
-            document.getElementById('info-hist').innerText = nomesHistorico[nivelHistorico];
-            document.getElementById('btn-voltar-hist').disabled = (nivelHistorico === 0);
-            document.getElementById('btn-avancar-hist').disabled = (nivelHistorico === 5);
+            document.getElementById('info-hist').innerHTML = 'Imagem de: <span>' + dataFormatada + '</span>';
+            
+            // Desativa o botão se já estiver no histórico 5 ou se não houver próxima imagem
+            var temProxima = (nivelHistorico === 5) || (!dadosMapaAtual[0] || !dadosMapaAtual[0][colunasHistorico[nivelHistorico + 1]]);
+            document.getElementById('btn-hist').disabled = temProxima;
         }
 
         function voltarParaLista() {
