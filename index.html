@@ -28,13 +28,14 @@
         #botao-mapa.visivel { display: block; }
         #botao-voltar { position: fixed; top: 15px; left: 15px; background: rgba(17,24,39,0.9); color: white; border: 1px solid #374151; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1001; display: none; font-size: 14px; }
         #botao-voltar.visivel { display: block; }
-        #barra-tempo { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; display: none; }
-        #barra-tempo.visivel { display: block; }
-        .barra-conteudo { max-width: 500px; margin: 0 auto; display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: center; }
-        .input-data { background: #374151; border: 1px solid #4b5563; border-radius: 8px; padding: 8px; color: white; font-size: 14px; width: 180px; }
-        .botao-historico { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; white-space: nowrap; }
-        .botao-historico:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
-        .status-msg { margin-top: 8px; font-size: 12px; color: #9ca3af; text-align: center; min-height: 16px; }
+        
+        /* BARRA DO HISTÓRICO NOVA */
+        #barra-historico { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; display: none; text-align: center; }
+        #barra-historico.visivel { display: block; }
+        .btn-hist { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; margin: 0 5px; }
+        .btn-hist:disabled { background: #1e3a5f; opacity: 0.5; cursor: not-allowed; }
+        .btn-hist-atual { background: #16a34a; }
+        .info-hist { font-size: 12px; color: #9ca3af; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -57,12 +58,11 @@
 
     <button id="botao-mapa" onclick="abrirMapaSelecionados()">Ver 0 no Mapa</button>
 
-    <div id="barra-tempo">
-        <div class="barra-conteudo">
-            <input type="date" id="input-data" class="input-data">
-            <button id="btn-historico" class="botao-historico" onclick="buscarHistorico()">Buscar Historico</button>
-        </div>
-        <div id="status-msg" class="status-msg"></div>
+    <div id="barra-historico">
+        <div class="info-hist" id="info-hist">Imagem Atual</div>
+        <button id="btn-voltar-hist" class="btn-hist" onclick="mudarHistorico(-1)" disabled>&larr; Anterior</button>
+        <button id="btn-atual-hist" class="btn-hist btn-hist-atual" onclick="irParaAtual()">Atual</button>
+        <button id="btn-avancar-hist" class="btn-hist" onclick="mudarHistorico(1)">Próxima &rarr;</button>
     </div>
 
     <div id="map"></div>
@@ -76,6 +76,11 @@
         var idsSelecionados = [];
         var layersImagem = [];
         var dadosMapaAtual = [];
+        
+        // Controle do histórico
+        var nivelHistorico = 0; // 0 = Atual, 1 = Hist 1, 2 = Hist 2...
+        var colunasHistorico = ['imagem_ndvi', 'img_h1', 'img_h2', 'img_h3', 'img_h4', 'img_h5'];
+        var nomesHistorico = ['Imagem Atual', 'Histórico 1 (Mais recente)', 'Histórico 2', 'Histórico 3', 'Histórico 4', 'Histórico 5 (Mais antigo)'];
 
         document.getElementById('loading').style.display = 'flex';
 
@@ -87,7 +92,7 @@
         .then(function(data) {
             document.getElementById('loading').style.display = 'none';
             if (!data || data.length === 0) {
-                document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhao encontrado.</p>';
+                document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhao.</p>';
                 return;
             }
             var html = '';
@@ -102,7 +107,7 @@
             document.getElementById('lista-talhoes').innerHTML = html;
         })
         .catch(function(e) {
-            document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro ao conectar</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
+            document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
         });
 
         function toggleSelect(id, checkbox) {
@@ -121,29 +126,32 @@
             document.getElementById('loading').style.display = 'flex';
             document.getElementById('loading').innerHTML = '<div class="spinner"></div><div style="font-size:18px;color:#333;">Carregando mapa...</div>';
             document.getElementById('botao-mapa').classList.remove('visivel');
-            document.getElementById('barra-tempo').classList.add('visivel');
+            document.getElementById('barra-historico').classList.add('visivel');
             document.getElementById('tela-lista').style.display = 'none';
-            document.getElementById('status-msg').innerText = '';
+            nivelHistorico = 0; // Sempre começa na atual ao abrir
 
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', { headers: HEADERS })
+            // Busca TUDO incluindo as colunas de histórico
+            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,img_h1,img_h2,img_h3,img_h4,img_h5,geom', { headers: HEADERS })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
                 return res.json();
             })
             .then(function(data) {
                 dadosMapaAtual = data;
-                renderizarMapa(data);
+                atualizarBotoesHistorico();
+                renderizarMapa();
             })
             .catch(function(e) {
                 document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
             });
         }
 
-        function renderizarMapa(data) {
+        function renderizarMapa() {
             document.getElementById('loading').style.display = 'none';
             document.getElementById('map').style.display = 'block';
             document.getElementById('botao-voltar').classList.add('visivel');
-            if (!data || data.length === 0) { alert('Nenhum dado encontrado.'); return; }
+            
+            if (!dadosMapaAtual || dadosMapaAtual.length === 0) return;
             
             if (mapaAtual) mapaAtual.remove();
             mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
@@ -153,22 +161,26 @@
             layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); });
             layersImagem = [];
 
-            for (var i = 0; i < data.length; i++) {
-                var t = data[i];
+            var colunaAtual = colunasHistorico[nivelHistorico];
+
+            for (var i = 0; i < dadosMapaAtual.length; i++) {
+                var t = dadosMapaAtual[i];
                 var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
                 var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
                 gLayer.addTo(mapaAtual);
                 boundsGeral.extend(gLayer.getBounds());
                 
-                // Verifica se tem imagem Base64 (atual) ou URL (historico)
+                var dadosImg = t[colunaAtual];
                 var urlImagem = '';
-                if (t.url_imagem) {
-                    urlImagem = t.url_imagem;
-                } else if (t.imagem_ndvi && t.imagem_ndvi.length > 50) {
-                    urlImagem = 'data:image/png;base64,' + t.imagem_ndvi;
-                }
 
-                if (urlImagem !== '') {
+                if (dadosImg && dadosImg.length > 10) {
+                    // Se começa com http, é do Storage. Se não, é Base64
+                    if (dadosImg.startsWith('http')) {
+                        urlImagem = dadosImg;
+                    } else {
+                        urlImagem = 'data:image/png;base64,' + dadosImg;
+                    }
+
                     var iLayer = L.imageOverlay(urlImagem, gLayer.getBounds(), { opacity: 0.9 });
                     iLayer.addTo(mapaAtual);
                     layersImagem.push(iLayer);
@@ -178,68 +190,35 @@
             setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
         }
 
+        function mudarHistorico(direcao) {
+            var novoNivel = nivelHistorico + direcao;
+            if (novoNivel >= 0 && novoNivel <= 5) {
+                nivelHistorico = novoNivel;
+                atualizarBotoesHistorico();
+                renderizarMapa();
+            }
+        }
+
+        function irParaAtual() {
+            nivelHistorico = 0;
+            atualizarBotoesHistorico();
+            renderizarMapa();
+        }
+
+        function atualizarBotoesHistorico() {
+            document.getElementById('info-hist').innerText = nomesHistorico[nivelHistorico];
+            document.getElementById('btn-voltar-hist').disabled = (nivelHistorico === 0);
+            document.getElementById('btn-avancar-hist').disabled = (nivelHistorico === 5);
+        }
+
         function voltarParaLista() {
             document.getElementById('map').style.display = 'none';
             document.getElementById('tela-lista').style.display = 'block';
             document.getElementById('loading').style.display = 'none';
-            document.getElementById('barra-tempo').classList.remove('visivel');
+            document.getElementById('barra-historico').classList.remove('visivel');
             document.getElementById('botao-voltar').classList.remove('visivel');
             if (mapaAtual) { mapaAtual.remove(); mapaAtual = null; }
             layersImagem = [];
-        }
-
-        function buscarHistorico() {
-            var dataSelecionada = document.getElementById('input-data').value;
-            if (!dataSelecionada) { alert('Selecione uma data no calendario.'); return; }
-            
-            var idsAtuais = dadosMapaAtual.map(function(t) { return t.id; });
-            if (idsAtuais.length === 0) return;
-
-            var btn = document.getElementById('btn-historico');
-            var status = document.getElementById('status-msg');
-            btn.disabled = true;
-            btn.innerText = 'Buscando...';
-            status.innerText = 'Procurando imagens de ' + dataSelecionada + '...';
-
-            fetch(SUPABASE_URL + '/historico_ndvi?talhao_id=in.(' + idsAtuais.join(',') + ')&data_imagem=eq.' + dataSelecionada + '&select=imagem_ndvi,talhao_id,url_imagem', { headers: HEADERS })
-            .then(function(res) { return res.json(); })
-            .then(function(historico) {
-                btn.disabled = false;
-                btn.innerText = 'Buscar Historico';
-
-                if (historico.length === 0) {
-                    status.innerText = 'Nenhuma imagem salva para essa data. Rode o script do Colab para gerar.';
-                    return;
-                }
-
-                var dadosParaRenderizar = [];
-                for (var i = 0; i < dadosMapaAtual.length; i++) {
-                    var talhaoAtual = dadosMapaAtual[i];
-                    var urlHistorico = null;
-                    
-                    for (var j = 0; j < historico.length; j++) {
-                        if (historico[j].talhao_id === talhaoAtual.id) {
-                            urlHistorico = historico[j].url_imagem;
-                            break;
-                        }
-                    }
-
-                    dadosParaRenderizar.push({
-                        id: talhaoAtual.id,
-                        geom: talhaoAtual.geom,
-                        url_imagem: urlHistorico || ''
-                    });
-                }
-
-                renderizarMapa(dadosParaRenderizar);
-                status.innerText = 'Historico de ' + dataSelecionada + ' carregado!';
-                setTimeout(function() { status.innerText = ''; }, 4000);
-            })
-            .catch(function(e) {
-                status.innerText = 'Erro ao buscar historico.';
-                btn.disabled = false;
-                btn.innerText = 'Buscar Historico';
-            });
         }
     </script>
 </body>
