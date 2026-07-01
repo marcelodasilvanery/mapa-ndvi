@@ -33,6 +33,7 @@
         .barra-conteudo { max-width: 500px; margin: 0 auto; display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: center; }
         .input-data { background: #374151; border: 1px solid #4b5563; border-radius: 8px; padding: 8px; color: white; font-size: 14px; width: 180px; }
         .botao-historico { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; white-space: nowrap; }
+        .botao-historico:disabled { background: #1e40af; opacity: 0.6; cursor: not-allowed; }
         .status-msg { margin-top: 8px; font-size: 12px; color: #9ca3af; text-align: center; min-height: 16px; }
     </style>
 </head>
@@ -43,7 +44,7 @@
         <div style="font-size: 12px; color: #888;">Aguarde um instante</div>
     </div>
 
-    <button id="botao-voltar" onclick="voltarParaLista()">← Voltar</button>
+    <button id="botao-voltar" onclick="voltarParaLista()">Voltar</button>
 
     <div class="lista-container" id="tela-lista">
         <div class="header">
@@ -69,22 +70,18 @@
     <script>
         var SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
         var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+        var HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
 
         var mapaAtual = null;
         var idsSelecionados = [];
         var layersImagem = [];
+        var dadosMapaAtual = [];
 
         document.getElementById('loading').style.display = 'flex';
 
-        fetch(SUPABASE_URL + '/talhoes?select=id,codigo_talhao,tem_ndvi,geom&order=codigo_talhao.asc', {
-            headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
-        })
+        fetch(SUPABASE_URL + '/talhoes?select=id,codigo_talhao,tem_ndvi,geom&order=codigo_talhao.asc', { headers: HEADERS })
         .then(function(res) {
-            if (!res.ok) {
-                return res.text().then(function(texto) {
-                    throw new Error('HTTP ' + res.status + ' - ' + texto);
-                });
-            }
+            if (!res.ok) { return res.text().then(function(t) { throw new Error('HTTP ' + res.status + ' - ' + t); }); }
             return res.json();
         })
         .then(function(data) {
@@ -126,42 +123,59 @@
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('barra-tempo').classList.add('visivel');
             document.getElementById('tela-lista').style.display = 'none';
+            document.getElementById('status-msg').innerText = '';
 
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', {
-                headers: { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY }
-            })
+            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,geom', { headers: HEADERS })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
                 return res.json();
             })
             .then(function(data) {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('map').style.display = 'block';
-                document.getElementById('botao-voltar').classList.add('visivel');
-                if (!data || data.length === 0) { alert('Nenhum talhao encontrado.'); return; }
-                if (mapaAtual) mapaAtual.remove();
-                mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
-                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(mapaAtual);
-                var boundsGeral = L.latLngBounds([]);
-                layersImagem = [];
-                for (var i = 0; i < data.length; i++) {
-                    var t = data[i];
-                    var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
-                    var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
-                    gLayer.addTo(mapaAtual);
-                    boundsGeral.extend(gLayer.getBounds());
-                    if (t.imagem_ndvi && t.imagem_ndvi.length > 50) {
-                        var iLayer = L.imageOverlay('data:image/png;base64,' + t.imagem_ndvi, gLayer.getBounds(), { opacity: 0.9 });
-                        iLayer.addTo(mapaAtual);
-                        layersImagem.push(iLayer);
-                    }
-                }
-                mapaAtual.fitBounds(boundsGeral, { padding: [50, 20] });
-                setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
+                dadosMapaAtual = data;
+                renderizarMapa(data);
             })
             .catch(function(e) {
                 document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
             });
+        }
+
+        function renderizarMapa(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('map').style.display = 'block';
+            document.getElementById('botao-voltar').classList.add('visivel');
+            if (!data || data.length === 0) { alert('Nenhum dado encontrado.'); return; }
+            
+            if (mapaAtual) mapaAtual.remove();
+            mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(mapaAtual);
+            
+            var boundsGeral = L.latLngBounds([]);
+            layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); });
+            layersImagem = [];
+
+            for (var i = 0; i < data.length; i++) {
+                var t = data[i];
+                var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
+                var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
+                gLayer.addTo(mapaAtual);
+                boundsGeral.extend(gLayer.getBounds());
+                
+                // Verifica se tem imagem Base64 (atual) ou URL (historico)
+                var urlImagem = '';
+                if (t.url_imagem) {
+                    urlImagem = t.url_imagem;
+                } else if (t.imagem_ndvi && t.imagem_ndvi.length > 50) {
+                    urlImagem = 'data:image/png;base64,' + t.imagem_ndvi;
+                }
+
+                if (urlImagem !== '') {
+                    var iLayer = L.imageOverlay(urlImagem, gLayer.getBounds(), { opacity: 0.9 });
+                    iLayer.addTo(mapaAtual);
+                    layersImagem.push(iLayer);
+                }
+            }
+            mapaAtual.fitBounds(boundsGeral, { padding: [50, 20] });
+            setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
         }
 
         function voltarParaLista() {
@@ -175,7 +189,57 @@
         }
 
         function buscarHistorico() {
-            alert('Funcao de historico sera configurada em breve.');
+            var dataSelecionada = document.getElementById('input-data').value;
+            if (!dataSelecionada) { alert('Selecione uma data no calendario.'); return; }
+            
+            var idsAtuais = dadosMapaAtual.map(function(t) { return t.id; });
+            if (idsAtuais.length === 0) return;
+
+            var btn = document.getElementById('btn-historico');
+            var status = document.getElementById('status-msg');
+            btn.disabled = true;
+            btn.innerText = 'Buscando...';
+            status.innerText = 'Procurando imagens de ' + dataSelecionada + '...';
+
+            fetch(SUPABASE_URL + '/historico_ndvi?talhao_id=in.(' + idsAtuais.join(',') + ')&data_imagem=eq.' + dataSelecionada + '&select=imagem_ndvi,talhao_id,url_imagem', { headers: HEADERS })
+            .then(function(res) { return res.json(); })
+            .then(function(historico) {
+                btn.disabled = false;
+                btn.innerText = 'Buscar Historico';
+
+                if (historico.length === 0) {
+                    status.innerText = 'Nenhuma imagem salva para essa data. Rode o script do Colab para gerar.';
+                    return;
+                }
+
+                var dadosParaRenderizar = [];
+                for (var i = 0; i < dadosMapaAtual.length; i++) {
+                    var talhaoAtual = dadosMapaAtual[i];
+                    var urlHistorico = null;
+                    
+                    for (var j = 0; j < historico.length; j++) {
+                        if (historico[j].talhao_id === talhaoAtual.id) {
+                            urlHistorico = historico[j].url_imagem;
+                            break;
+                        }
+                    }
+
+                    dadosParaRenderizar.push({
+                        id: talhaoAtual.id,
+                        geom: talhaoAtual.geom,
+                        url_imagem: urlHistorico || ''
+                    });
+                }
+
+                renderizarMapa(dadosParaRenderizar);
+                status.innerText = 'Historico de ' + dataSelecionada + ' carregado!';
+                setTimeout(function() { status.innerText = ''; }, 4000);
+            })
+            .catch(function(e) {
+                status.innerText = 'Erro ao buscar historico.';
+                btn.disabled = false;
+                btn.innerText = 'Buscar Historico';
+            });
         }
     </script>
 </body>
