@@ -14,9 +14,13 @@
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2E7D32; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        .lista-container { max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; }
+        .lista-container { position: relative; z-index: 10; max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; }
         .header { text-align: center; margin-bottom: 20px; }
         .header-circle { width: 56px; height: 56px; background: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 24px; font-weight: bold; }
+        
+        .campo-busca { margin-bottom: 15px; }
+        .campo-busca input { width: 100%; background: #374151; border: 1px solid #4b5563; border-radius: 8px; padding: 12px 15px; color: white; font-size: 14px; outline: none; }
+        .campo-busca input::placeholder { color: #9ca3af; }
         
         .topo-acoes { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding: 0 5px; }
         .btn-selecionar-todos { background: #374151; color: white; border: 1px solid #4b5563; padding: 8px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; font-weight: bold; }
@@ -37,7 +41,6 @@
         #botao-voltar { position: fixed; top: 15px; left: 15px; background: rgba(17,24,39,0.9); color: white; border: 1px solid #374151; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1001; display: none; font-size: 14px; }
         #botao-voltar.visivel { display: block; }
         
-        /* BARRA DO HISTÓRICO SIMPLIFICADA */
         #barra-historico { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; display: none; text-align: center; }
         #barra-historico.visivel { display: block; }
         .info-hist { font-size: 16px; font-weight: bold; color: #ffffff; margin-bottom: 10px; }
@@ -62,6 +65,10 @@
             <p style="color: #9ca3af; margin-top: 5px;">Selecione talhoes para ver no mapa</p>
         </div>
         
+        <div class="campo-busca">
+            <input type="text" id="busca-talhao" placeholder="Buscar talhão pelo código..." oninput="filtrarLista()">
+        </div>
+
         <div class="topo-acoes">
             <button class="btn-selecionar-todos" onclick="selecionarTodos()">Marcar Todos</button>
             <button class="btn-selecionar-todos" onclick="desmarcarTodos()">Desmarcar Todos</button>
@@ -90,7 +97,6 @@
         var layersImagem = [];
         var dadosMapaAtual = [];
         
-        // Controle do histórico (0 = Atual, 1 = Hist 1, etc)
         var nivelHistorico = 0; 
         var colunasHistorico = ['imagem_ndvi', 'img_h1', 'img_h2', 'img_h3', 'img_h4', 'img_h5'];
         var colunasData = ['data_ndvi', 'data_h1', 'data_h2', 'data_h3', 'data_h4', 'data_h5'];
@@ -123,6 +129,19 @@
         .catch(function(e) {
             document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
         });
+
+        function filtrarLista() {
+            var termoBusca = document.getElementById('busca-talhao').value.toLowerCase();
+            var cards = document.querySelectorAll('.card');
+            for (var i = 0; i < cards.length; i++) {
+                var nomeTalhao = cards[i].querySelector('.nome-talhao').innerText.toLowerCase();
+                if (nomeTalhao.includes(termoBusca)) {
+                    cards[i].style.display = 'flex';
+                } else {
+                    cards[i].style.display = 'none';
+                }
+            }
+        }
 
         function selecionarTodos() {
             idsSelecionados = [...todosIdsDisponiveis];
@@ -158,9 +177,8 @@
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('barra-historico').classList.add('visivel');
             document.getElementById('tela-lista').style.display = 'none';
-            nivelHistorico = 0; // Sempre começa na imagem mais recente
+            nivelHistorico = 0;
 
-            // Busca TUDO: imagens atuais, históricas e as DATAS
             fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,data_ndvi,img_h1,data_h1,img_h2,data_h2,img_h3,data_h3,img_h4,data_h4,img_h5,data_h5,geom', { headers: HEADERS })
             .then(function(res) {
                 if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
@@ -194,7 +212,7 @@
             var colunaImg = colunasHistorico[nivelHistorico];
 
             for (var i = 0; i < dadosMapaAtual.length; i++) {
-                var t = dadosMapaAtual[i];
+                var t = datosMapaAtual[i];
                 var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
                 var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
                 gLayer.addTo(mapaAtual);
@@ -220,11 +238,9 @@
         }
 
         function voltarNoTempo() {
-            // Só permite voltar se não estiver na mais antiga (5) e se a próxima coluna tiver imagem
             if (nivelHistorico < 5) {
-                // Verifica se o próximo nível tem imagem no primeiro talhão da lista
                 var proxColuna = colunasHistorico[nivelHistorico + 1];
-                if (dadosMapaAtual[0] && dadosMapaAtual[0][proxColuna]) {
+                if (datosMapaAtual[0] && datosMapaAtual[0][proxColuna]) {
                     nivelHistorico++;
                     atualizarTelaHistorico();
                     renderizarMapa();
@@ -238,18 +254,15 @@
             var colunaData = colunasData[nivelHistorico];
             var dataFormatada = '--/--/----';
             
-            // Pega a data do primeiro talhão selecionado
-            if (dadosMapaAtual[0] && dadosMapaAtual[0][colunaData]) {
-                var dataBanco = dadosMapaAtual[0][colunaData];
-                // Formata de YYYY-MM-DD para DD/MM/YYYY
+            if (datosMapaAtual[0] && datosMapaAtual[0][colunaData]) {
+                var dataBanco = datosMapaAtual[0][colunaData];
                 var partes = dataBanco.split('-');
                 dataFormatada = partes[2] + '/' + partes[1] + '/' + partes[0];
             }
 
             document.getElementById('info-hist').innerHTML = 'Imagem de: <span>' + dataFormatada + '</span>';
             
-            // Desativa o botão se já estiver no histórico 5 ou se não houver próxima imagem
-            var temProxima = (nivelHistorico === 5) || (!dadosMapaAtual[0] || !dadosMapaAtual[0][colunasHistorico[nivelHistorico + 1]]);
+            var temProxima = (nivelHistorico === 5) || (!datosMapaAtual[0] || !datosMapaAtual[0][colunasHistorico[nivelHistorico + 1]]);
             document.getElementById('btn-hist').disabled = temProxima;
         }
 
