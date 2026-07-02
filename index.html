@@ -6,16 +6,23 @@
     <title>Mapa NDVI</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #111827; color: white; }
-        #map { height: 100vh; width: 100vw; display: none; }
         
-        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 350px; }
+        #tela-login { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1f2937; padding: 40px; border-radius: 16px; border: 1px solid #374151; width: 90%; max-width: 350px; text-align: center; z-index: 2000; }
+        .input-login { width: 100%; background: #111827; border: 1px solid #4b5563; border-radius: 8px; padding: 12px 15px; color: white; font-size: 14px; outline: none; margin-bottom: 15px; }
+        .btn-login { width: 100%; background: #16a34a; color: white; border: none; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-login:hover { background: #15803d; }
+        .msg-erro { color: #ef4444; font-size: 13px; margin-top: 10px; display: none; }
+
+        #map { height: 100vh; width: 100vw; display: none; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); text-align: center; z-index: 1000; max-width: 350px; display: none; }
         .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #2E7D32; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
-        .lista-container { position: relative; z-index: 10; max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; }
+        .lista-container { position: relative; z-index: 10; max-width: 640px; margin: 0 auto; padding: 15px; padding-bottom: 100px; display: none; }
         .header { text-align: center; margin-bottom: 20px; }
         .header-circle { width: 56px; height: 56px; background: #16a34a; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; font-size: 24px; font-weight: bold; }
         
@@ -41,8 +48,9 @@
         
         #botao-voltar { position: fixed; top: 15px; left: 15px; background: rgba(17,24,39,0.9); color: white; border: 1px solid #374151; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1001; display: none; font-size: 14px; }
         #botao-voltar.visivel { display: block; }
+        #botao-sair { position: fixed; top: 15px; right: 15px; background: #dc2626; color: white; border: none; padding: 10px 16px; border-radius: 8px; font-weight: bold; cursor: pointer; z-index: 1001; display: none; font-size: 14px; }
+        #botao-sair.visivel { display: block; }
 
-        /* BARRA SÓ COM A DATA */
         #barra-data { position: fixed; bottom: 0; left: 0; right: 0; background: rgba(17, 24, 39, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #374151; padding: 15px; z-index: 1000; display: none; text-align: center; }
         #barra-data.visivel { display: block; }
         .info-data { font-size: 16px; font-weight: bold; color: #ffffff; }
@@ -50,6 +58,17 @@
     </style>
 </head>
 <body>
+
+    <div id="tela-login">
+        <div style="font-size: 40px; margin-bottom: 15px;">🛰️</div>
+        <h2 style="margin-bottom: 5px;">Painel NDVI</h2>
+        <p style="color: #9ca3af; font-size: 13px; margin-bottom: 25px;">Faça login para ver suas áreas</p>
+        <input type="text" id="email-login" class="input-login" placeholder="Ex: 5516999999999">
+        <input type="password" id="senha-login" class="input-login" placeholder="Sua senha">
+        <button class="btn-login" onclick="fazerLogin()">Entrar</button>
+        <div id="msg-erro" class="msg-erro">Usuário ou senha incorretos.</div>
+    </div>
+
     <div id="loading">
         <div class="spinner"></div>
         <div style="font-size: 18px; color: #333;">Buscando talhoes...</div>
@@ -57,6 +76,7 @@
     </div>
 
     <button id="botao-voltar" onclick="voltarParaLista()">Voltar</button>
+    <button id="botao-sair" onclick="fazerLogout()">Sair</button>
 
     <div class="lista-container" id="tela-lista">
         <div class="header">
@@ -64,16 +84,13 @@
             <h1 style="margin: 0;">Painel NDVI</h1>
             <p style="color: #9ca3af; margin-top: 5px;">Selecione talhoes para ver no mapa</p>
         </div>
-        
         <div class="campo-busca">
             <input type="text" id="busca-talhao" placeholder="Buscar talhão pelo código..." oninput="filtrarLista()">
         </div>
-
         <div class="topo-acoes">
             <button class="btn-selecionar-todos" onclick="selecionarTodos()">Marcar Todos</button>
             <button class="btn-selecionar-todos" onclick="desmarcarTodos()">Desmarcar Todos</button>
         </div>
-
         <div id="lista-talhoes">Carregando...</div>
     </div>
 
@@ -86,151 +103,155 @@
     <div id="map"></div>
 
     <script>
-        var SUPABASE_URL = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
-        var SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
-        var HEADERS = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };
+        var supabaseUrl = 'https://keiydgyountsuzjybsng.supabase.co';
+        var supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+        var sbClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+        var SUPABASE_URL_REST = 'https://keiydgyountsuzjybsng.supabase.co/rest/v1';
+        var HEADERS = { 'apikey': supabaseKey, 'Authorization': 'Bearer ' + supabaseKey };
 
         var mapaAtual = null;
         var idsSelecionados = [];
         var todosIdsDisponiveis = [];
         var layersImagem = [];
+        var usuarioLogado = null;
 
-        document.getElementById('loading').style.display = 'flex';
+        // SISTEMA DE LOGIN
+        async function fazerLogin() {
+            // PEGA SÓ O NÚMERO E ADICIONA O @APP.NDVI AUTOMATICAMENTE
+            var usuario = document.getElementById('email-login').value.trim() + '@app.ndvi';
+            var senha = document.getElementById('senha-login').value;
+            document.getElementById('msg-erro').style.display = 'none';
+            if (!usuario || !senha) return;
 
-        fetch(SUPABASE_URL + '/talhoes?select=id,codigo_talhao,tem_ndvi,geom&order=codigo_talhao.asc', { headers: HEADERS })
-        .then(function(res) {
-            if (!res.ok) { return res.text().then(function(t) { throw new Error('HTTP ' + res.status + ' - ' + t); }); }
-            return res.json();
-        })
-        .then(function(data) {
-            document.getElementById('loading').style.display = 'none';
-            if (!data || data.length === 0) {
-                document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhao.</p>';
-                return;
+            const { data, error } = await sbClient.auth.signInWithPassword({ email: usuario, password: senha });
+            if (error) {
+                document.getElementById('msg-erro').style.display = 'block';
+            } else {
+                usuarioLogado = data.user;
+                document.getElementById('tela-login').style.display = 'none';
+                carregarTalhoes();
             }
-            var html = '';
-            for (var i = 0; i < data.length; i++) {
-                var t = data[i];
-                todosIdsDisponiveis.push(t.id);
-                var badge = t.tem_ndvi ? '<span class="badge badge-pronto">Pronto</span>' : '<span class="badge badge-pendente">Pendente</span>';
-                html += '<div class="card" onclick="abrirMapa(\'' + t.id + '\')">' +
-                    '<input type="checkbox" class="checkbox" id="check-' + t.id + '" onclick="toggleSelect(\'' + t.id + '\', this)">' +
-                    '<span class="nome-talhao">' + t.codigo_talhao + '</span>' +
-                    badge + '</div>';
+        }
+
+        function fazerLogout() {
+            sbClient.auth.signOut();
+            location.reload();
+        }
+
+        sbClient.auth.onAuthStateChange((event, session) => {
+            if (session && session.user) {
+                usuarioLogado = session.user;
+                document.getElementById('tela-login').style.display = 'none';
+                carregarTalhoes();
             }
-            document.getElementById('lista-talhoes').innerHTML = html;
-        })
-        .catch(function(e) {
-            document.getElementById('loading').innerHTML = '<div style="background:#1f2937;border:1px solid #ef4444;padding:20px;border-radius:10px;text-align:left;max-width:350px;word-break:break-all;"><div style="color:#ef4444;font-size:16px;margin-bottom:10px;">Erro</div><div style="color:#d1d5db;font-size:12px;">' + e.message + '</div></div>';
         });
 
+        // CARREGAR TALHÕES DO CLIENTE LOGADO
+        function carregarTalhoes() {
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('tela-lista').style.display = 'block';
+            // REMOVE O @APP.NDVI DO EMAIL PARA BUSCAR NO BANCO (POIS NO BANCO TEM SÓ O NÚMERO)
+            var whatsappUsuario = usuarioLogado.email.replace('@app.ndvi', '');
+
+            // 1. Acha o ID do cliente dono desse WhatsApp
+            fetch(SUPABASE_URL_REST + '/clientes?whatsapp=eq.' + whatsappUsuario + '&select=id', { headers: HEADERS })
+            .then(function(res) { return res.json(); })
+            .then(function(clientes) {
+                if (clientes.length === 0) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#ef4444;padding-top:50px;">Nenhum cliente vinculado a este login.</p>';
+                    return;
+                }
+                var idCliente = clientes[0].id;
+
+                // 2. Busca APENAS os talhões desse cliente_id
+                return fetch(SUPABASE_URL_REST + '/talhoes?select=id,codigo_talhao,tem_ndvi,geom&cliente_id=eq.' + idCliente + '&order=codigo_talhao.asc', { headers: HEADERS });
+            })
+            .then(function(res) { if (!res.ok) throw new Error('Erro ao buscar talhões'); return res.json(); })
+            .then(function(data) {
+                document.getElementById('loading').style.display = 'none';
+                if (!data || data.length === 0) {
+                    document.getElementById('lista-talhoes').innerHTML = '<p style="text-align:center;color:#666;padding-top:50px;">Nenhum talhao encontrado.</p>';
+                    return;
+                }
+                var html = '';
+                for (var i = 0; i < data.length; i++) {
+                    var t = data[i];
+                    todosIdsDisponiveis.push(t.id);
+                    var badge = t.tem_ndvi ? '<span class="badge badge-pronto">Pronto</span>' : '<span class="badge badge-pendente">Pendente</span>';
+                    html += '<div class="card" onclick="abrirMapa(\'' + t.id + '\')">' +
+                        '<input type="checkbox" class="checkbox" id="check-' + t.id + '" onclick="toggleSelect(\'' + t.id + '\', this)">' +
+                        '<span class="nome-talhao">' + t.codigo_talhao + '</span>' +
+                        badge + '</div>';
+                }
+                document.getElementById('lista-talhoes').innerHTML = html;
+            })
+            .catch(function(e) {
+                document.getElementById('loading').style.display = 'none';
+                alert("Erro: " + e.message);
+            });
+        }
+
+        // FUNÇÕES DO MAPA
         function filtrarLista() {
             var termoBusca = document.getElementById('busca-talhao').value.toLowerCase();
             var cards = document.querySelectorAll('.card');
             for (var i = 0; i < cards.length; i++) {
                 var nomeTalhao = cards[i].querySelector('.nome-talhao').innerText.toLowerCase();
-                if (nomeTalhao.includes(termoBusca)) {
-                    cards[i].style.display = 'flex';
-                } else {
-                    cards[i].style.display = 'none';
-                }
+                cards[i].style.display = nomeTalhao.includes(termoBusca) ? 'flex' : 'none';
             }
         }
-
-        function selecionarTodos() {
-            idsSelecionados = [...todosIdsDisponiveis];
-            todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = true; });
-            atualizarBotaoMapa();
-        }
-
-        function desmarcarTodos() {
-            idsSelecionados = [];
-            todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = false; });
-            atualizarBotaoMapa();
-        }
-
-        function toggleSelect(id, checkbox) {
-            event.stopPropagation();
-            if (checkbox.checked) { idsSelecionados.push(id); } 
-            else { idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; }); }
-            atualizarBotaoMapa();
-        }
-
-        function atualizarBotaoMapa() {
-            var btn = document.getElementById('botao-mapa');
-            if (idsSelecionados.length > 0) { btn.classList.add('visivel'); btn.innerText = 'Ver ' + idsSelecionados.length + ' no Mapa'; } 
-            else { btn.classList.remove('visivel'); }
-        }
-
+        function selecionarTodos() { idsSelecionados = [...todosIdsDisponiveis]; todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = true; }); atualizarBotaoMapa(); }
+        function desmarcarTodos() { idsSelecionados = []; todosIdsDisponiveis.forEach(function(id) { document.getElementById('check-' + id).checked = false; }); atualizarBotaoMapa(); }
+        function toggleSelect(id, checkbox) { event.stopPropagation(); if (checkbox.checked) { idsSelecionados.push(id); } else { idsSelecionados = idsSelecionados.filter(function(i) { return i !== id; }); } atualizarBotaoMapa(); }
+        function atualizarBotaoMapa() { var btn = document.getElementById('botao-mapa'); if (idsSelecionados.length > 0) { btn.classList.add('visivel'); btn.innerText = 'Ver ' + idsSelecionados.length + ' no Mapa'; } else { btn.classList.remove('visivel'); } }
+        
         function abrirMapaSelecionados() { if (idsSelecionados.length > 0) abrirMapaVarios(idsSelecionados); }
         function abrirMapa(idUnico) { abrirMapaVarios([idUnico]); }
 
         function abrirMapaVarios(ids) {
-            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('loading').style.display = 'block';
             document.getElementById('loading').innerHTML = '<div class="spinner"></div><div style="font-size:18px;color:#333;">Carregando mapa...</div>';
             document.getElementById('botao-mapa').classList.remove('visivel');
             document.getElementById('tela-lista').style.display = 'none';
+            document.getElementById('botao-sair').classList.add('visivel');
 
-            // Agora busca junto a data_ndvi
-            fetch(SUPABASE_URL + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,data_ndvi,geom', { headers: HEADERS })
-            .then(function(res) {
-                if (!res.ok) throw new Error('Erro HTTP: ' + res.status);
-                return res.json();
-            })
+            fetch(SUPABASE_URL_REST + '/talhoes?id=in.(' + ids.join(',') + ')&select=id,codigo_talhao,imagem_ndvi,data_ndvi,geom', { headers: HEADERS })
+            .then(function(res) { if (!res.ok) throw new Error('Erro HTTP: ' + res.status); return res.json(); })
             .then(function(data) {
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('map').style.display = 'block';
                 document.getElementById('botao-voltar').classList.add('visivel');
                 document.getElementById('barra-data').classList.add('visivel');
                 
-                if (!data || data.length === 0) { alert('Nenhum talhao encontrado.'); return; }
-                
-                // Formata e mostra a data
                 var dataFormatada = '--/--/----';
-                if (data[0].data_ndvi) {
-                    var partes = data[0].data_ndvi.split('-');
-                    dataFormatada = partes[2] + '/' + partes[1] + '/' + partes[0];
-                }
+                if (data[0].data_ndvi) { var p = data[0].data_ndvi.split('-'); dataFormatada = p[2] + '/' + p[1] + '/' + p[0]; }
                 document.getElementById('info-data').innerHTML = 'Imagem de: <span>' + dataFormatada + '</span>';
 
                 if (mapaAtual) mapaAtual.remove();
                 mapaAtual = L.map('map').setView([-20.92, -49.65], 14);
                 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 19 }).addTo(mapaAtual);
-                
                 var boundsGeral = L.latLngBounds([]);
-                layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); });
-                layersImagem = [];
-
+                layersImagem.forEach(function(layer) { mapaAtual.removeLayer(layer); }); layersImagem = [];
                 for (var i = 0; i < data.length; i++) {
                     var t = data[i];
                     var geom = typeof t.geom === 'string' ? JSON.parse(t.geom) : t.geom;
                     var gLayer = L.geoJSON(geom, { style: { color: 'white', weight: 5, fillColor: 'transparent', fillOpacity: 0 } });
-                    gLayer.addTo(mapaAtual);
-                    boundsGeral.extend(gLayer.getBounds());
-                    
+                    gLayer.addTo(mapaAtual); boundsGeral.extend(gLayer.getBounds());
                     if (t.imagem_ndvi && t.imagem_ndvi.length > 50) {
-                        var urlImagem = 'data:image/png;base64,' + t.imagem_ndvi;
-                        var iLayer = L.imageOverlay(urlImagem, gLayer.getBounds(), { opacity: 0.9 });
-                        iLayer.addTo(mapaAtual);
-                        layersImagem.push(iLayer);
+                        var iLayer = L.imageOverlay('data:image/png;base64,' + t.imagem_ndvi, gLayer.getBounds(), { opacity: 0.9 });
+                        iLayer.addTo(mapaAtual); layersImagem.push(iLayer);
                     }
                 }
                 mapaAtual.fitBounds(boundsGeral, { padding: [50, 20] });
                 setTimeout(function() { mapaAtual.invalidateSize(); }, 300);
             })
-            .catch(function(e) {
-                document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>';
-            });
+            .catch(function(e) { document.getElementById('loading').innerHTML = '<div style="background:#f8d7da;border-left:6px solid #d32f2f;padding:20px;text-align:center;"><div style="color:#d32f2f;font-size:16px;">Erro</div><div style="color:#333;font-size:13px;">' + e.message + '</div></div>'; });
         }
 
         function voltarParaLista() {
-            document.getElementById('map').style.display = 'none';
-            document.getElementById('tela-lista').style.display = 'block';
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('botao-voltar').classList.remove('visivel');
-            document.getElementById('barra-data').classList.remove('visivel');
-            if (mapaAtual) { mapaAtual.remove(); mapaAtual = null; }
-            layersImagem = [];
+            document.getElementById('map').style.display = 'none'; document.getElementById('tela-lista').style.display = 'block'; document.getElementById('loading').style.display = 'none'; document.getElementById('barra-data').classList.remove('visivel'); document.getElementById('botao-voltar').classList.remove('visivel'); document.getElementById('botao-sair').classList.remove('visivel');
+            if (mapaAtual) { mapaAtual.remove(); mapaAtual = null; } layersImagem = [];
         }
     </script>
 </body>
