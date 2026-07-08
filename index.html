@@ -1,59 +1,354 @@
-// ==========================================
-// LÓGICA DE LOGIN COM VERIFICAÇÃO DE BLOQUEIO
-// ==========================================
-
-async function fazerLogin() {
-    const inputWhatsapp = document.getElementById('campo-whatsapp').value.replace(/\D/g, '');
-    const msgErro = document.getElementById('msg-erro-login'); // Crie uma div com esse id para mostrar erros
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa NDVI</title>
     
-    if (inputWhatsapp.length < 10) {
-        msgErro.innerText = "Digite um WhatsApp válido.";
-        msgErro.style.display = "block";
-        return;
-    }
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { background-color: #f4f6f8; height: 100vh; display: flex; flex-direction: column; }
 
-    msgErro.style.display = "none";
-    msgErro.innerText = "Entrando...";
+        /* TELA DE LOGIN */
+        #tela-login {
+            flex: 1; display: flex; justify-content: center; align-items: center; background: linear-gradient(135deg, #1a472a 0%, #2d8659 100%);
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            width: 90%; max-width: 400px; text-align: center;
+        }
+        .login-box h2 { color: #1a472a; margin-bottom: 20px; }
+        .login-box input {
+            width: 100%; padding: 15px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; font-size: 16px;
+        }
+        .login-box button {
+            width: 100%; padding: 15px; background: #2d8659; color: white; border: none; border-radius: 5px;
+            font-size: 16px; cursor: pointer; font-weight: bold; margin-top: 10px;
+        }
+        .login-box button:hover { background: #1a472a; }
+        .login-box a { color: #25D366; text-decoration: none; font-weight: bold; }
+        #msg-erro-login { color: red; margin-top: 15px; font-size: 14px; min-height: 20px; }
 
-    const emailFake = inputWhatsapp + "@app.ndvi";
-    // A senha padrão que você cadastrou para eles (ex: 123456 ou o cpf sem pontuação)
-    const senha = inputWhatsapp; // Altere aqui se a senha for diferente do whatsapp
+        /* TELA DO APP */
+        #tela-app { display: none; flex: 1; flex-direction: column; height: 100vh; }
+        
+        /* CABEÇALHO */
+        .header {
+            background: #1a472a; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .header h1 { font-size: 20px; }
+        .btn-logout { background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
 
-    try {
-        // 1. Tenta logar no Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email: emailFake,
-            password: senha
-        });
+        /* CORPO (LISTA + MAPA) */
+        .corpo { display: flex; flex: 1; overflow: hidden; }
+        
+        /* PAINEL LATERAL */
+        .painel-lateral {
+            width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column;
+        }
+        .busca-container { padding: 15px; border-bottom: 1px solid #ddd; }
+        .busca-container input {
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px;
+        }
+        .botoes-acoes { padding: 10px 15px; display: flex; gap: 10px; border-bottom: 1px solid #ddd; }
+        .botoes-acoes button {
+            flex: 1; padding: 8px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 5px; cursor: pointer; font-size: 13px;
+        }
+        #lista-talhoes { flex: 1; overflow-y: auto; padding: 10px; }
+        .item-talhao { padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; }
+        .item-talhao label { margin-left: 10px; cursor: pointer; font-size: 15px; }
 
-        if (authError) throw authError;
+        /* MAPA */
+        #mapa { flex: 1; background: #e9e9e9; position: relative; }
+        
+        /* BARRA DE DATA */
+        #barra-data {
+            background: #333; color: white; text-align: center; padding: 10px; font-size: 14px;
+        }
+    </style>
+</head>
+<body>
 
-        // 2. Se logou, busca os dados na tabela 'clientes' para ver se está BLOQUEADO
-        const { data: cliente, error: dbError } = await supabase
-            .from('clientes')
-            .select('id, ativo')
-            .eq('whatsapp', inputWhatsapp)
-            .single();
+    <!-- TELA DE LOGIN -->
+    <div id="tela-login">
+        <div class="login-box">
+            <h2>📈 Mapa NDVI</h2>
+            <input type="text" id="campo-whatsapp" placeholder="Seu WhatsApp (somente números)" maxlength="15">
+            <button onclick="fazerLogin()">Entrar</button>
+            <div id="msg-erro-login"></div>
+            <p style="margin-top: 20px; font-size: 14px; color: #666;">
+                Esqueceu sua senha ou precisa de acesso?<br>
+                <a href="https://wa.me/5516999999999?text=Olá, preciso de ajuda com meu acesso ao Mapa NDVI." target="_blank">
+                    Fale com o Suporte
+                </a>
+            </p>
+        </div>
+    </div>
 
-        if (dbError || !cliente) {
-            await supabase.auth.signOut();
-            throw new Error("Usuário não encontrado na base de dados.");
+    <!-- TELA DO APP -->
+    <div id="tela-app">
+        <div class="header">
+            <h1>Mapa NDVI</h1>
+            <button class="btn-logout" onclick="deslogar()">Sair</button>
+        </div>
+        
+        <div class="corpo">
+            <div class="painel-lateral">
+                <div class="busca-container">
+                    <input type="text" id="campo-busca" placeholder="Buscar talhão (ex: 70010)" oninput="filtrarLista()">
+                </div>
+                <div class="botoes-acoes">
+                    <button onclick="marcarTodos()">Marcar Todos</button>
+                    <button onclick="desmarcarTodos()">Desmarcar Todos</button>
+                </div>
+                <div id="lista-talhoes">
+                    <!-- Itens serão inseridos aqui via JS -->
+                </div>
+            </div>
+            <div id="mapa"></div>
+        </div>
+        
+        <div id="barra-data">Selecione talhões e aguarde...</div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <script>
+        // CONFIGURAÇÃO SUPABASE
+        const supabaseUrl = 'https://keiydgyountsuzjybsng.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtlaXlkZ3lvdW50c3V6anlic25nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODY1MTksImV4cCI6MjA5ODE2MjUxOX0.Cd3TqUBZsNWV00AZGkrElJVmNlWPccDgtl-n95BVwjg';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // VARIÁVEIS GLOBAIS
+        let mapa = null;
+        let dadosTalhoes = [];
+        let clienteId = null;
+
+        // INICIALIZAÇÃO
+        window.onload = async () => {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) {
+                // Se já tem sessão, valida o acesso direto
+                const whatsapp = session.user.email.replace('@app.ndvi', '');
+                await validarAcessoELoadar(whatsapp);
+            } else {
+                mostrarTela('login');
+            }
+        };
+
+        function mostrarTela(tela) {
+            document.getElementById('tela-login').style.display = tela === 'login' ? 'flex' : 'none';
+            document.getElementById('tela-app').style.display = tela === 'app' ? 'flex' : 'none';
         }
 
-        // 3. VERIFICA SE ESTÁ BLOQUEADO (PLANO VENCIDO)
-        if (cliente.ativo === false) {
-            await supabase.auth.signOut(); // Desloga imediatamente
-            msgErro.innerText = "⚠️ SEU ACESSO ESTÁ BLOQUEADO. Plano expirado. Entre em contato com o suporte.";
-            msgErro.style.display = "block";
-            return;
+        // LÓGICA DE LOGIN
+        async function fazerLogin() {
+            const inputWhatsapp = document.getElementById('campo-whatsapp').value.replace(/\D/g, '');
+            const msgErro = document.getElementById('msg-erro-login');
+            
+            if (inputWhatsapp.length < 10) {
+                msgErro.innerText = "Digite um WhatsApp válido.";
+                return;
+            }
+
+            msgErro.innerText = "Verificando...";
+            msgErro.style.color = "#666";
+
+            const emailFake = inputWhatsapp + "@app.ndvi";
+            // Supondo que a senha cadastrada no Supabase Auth seja o próprio número do WhatsApp
+            const senha = inputWhatsapp; 
+
+            try {
+                // 1. Tenta logar
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
+                    email: emailFake,
+                    password: senha
+                });
+
+                if (error) throw error;
+
+                // 2. Se logou, valida bloqueio e carrega
+                await validarAcessoELoadar(inputWhatsapp);
+
+            } catch (error) {
+                msgErro.style.color = "red";
+                if (error.message.includes("Invalid login")) {
+                    msgErro.innerText = "WhatsApp ou senha incorretos.";
+                } else {
+                    msgErro.innerText = "Erro: " + error.message;
+                }
+            }
         }
 
-        // 4. Se chegou aqui, está tudo ok! Redireciona ou carrega o mapa
-        msgErro.style.display = "none";
-        carregarTelaDoMapa(cliente.id); // Chame a sua função que mostra a lista de talhões
+        // VALIDAÇÃO DE BLOQUEIO E CARREGAMENTO
+        async function validarAcessoELoadar(whatsapp) {
+            const msgErro = document.getElementById('msg-erro-login');
+            
+            const { data: cliente, error: dbError } = await supabaseClient
+                .from('clientes')
+                .select('id, ativo')
+                .eq('whatsapp', whatsapp)
+                .single();
 
-    } catch (error) {
-        msgErro.innerText = "Erro ao entrar: " + error.message;
-        msgErro.style.display = "block";
-    }
-}
+            if (dbError || !cliente) {
+                await supabaseClient.auth.signOut();
+                mostrarTela('login');
+                msgErro.style.color = "red";
+                msgErro.innerText = "Usuário não encontrado na base de dados.";
+                return;
+            }
+
+            // VERIFICA SE ESTÁ BLOQUEADO
+            if (cliente.ativo === false) {
+                await supabaseClient.auth.signOut();
+                mostrarTela('login');
+                msgErro.style.color = "red";
+                msgErro.innerText = "⚠️ ACESSO BLOQUEADO. Plano expirado. Contate o suporte.";
+                return;
+            }
+
+            // TUDO OK - ENTRAR NO APP
+            clienteId = cliente.id;
+            msgErro.innerText = "";
+            mostrarTela('app');
+            buscarTalhoes();
+        }
+
+        // BUSCAR TALHÕES NO BANCO
+        async function buscarTalhoes() {
+            const { data, error } = await supabaseClient
+                .from('talhoes')
+                .select('id, codigo_talhao, geom, imagem_ndvi, data_ndvi')
+                .eq('cliente_id', clienteId)
+                .eq('tem_ndvi', true);
+
+            if (!error) {
+                dadosTalhoes = data;
+                renderizarLista(dadosTalhoes);
+                iniciarMapa();
+            }
+        }
+
+        // RENDERIZAR LISTA
+        function renderizarLista(talhoes) {
+            const container = document.getElementById('lista-talhoes');
+            container.innerHTML = '';
+            document.getElementById('barra-data').innerText = 'Selecione talhões e aguarde...';
+
+            talhoes.forEach(talhao => {
+                const div = document.createElement('div');
+                div.className = 'item-talhao';
+                div.innerHTML = `
+                    <input type="checkbox" class="check-talhao" value="${talhao.id}" onchange="atualizarMapa()">
+                    <label>${talhao.codigo_talhao}</label>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // FILTRAR LISTA
+        function filtrarLista() {
+            const termo = document.getElementById('campo-busca').value.toLowerCase();
+            const filtrados = dadosTalhoes.filter(t => t.codigo_talhao.toLowerCase().includes(termo));
+            renderizarLista(filtrados);
+        }
+
+        // MARCAR / DESMARCAR TODOS
+        function marcarTodos() {
+            document.querySelectorAll('.check-talhao').forEach(cb => cb.checked = true);
+            atualizarMapa();
+        }
+        function desmarcarTodos() {
+            document.querySelectorAll('.check-talhao').forEach(cb => cb.checked = false);
+            atualizarMapa();
+        }
+
+        // INICIAR MAPA LEAFLET
+        function iniciarMapa() {
+            if (!mapa) {
+                mapa = L.map('mapa').setView([-20.5, -49.5], 10); // Centro em SP
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: 'Tiles &copy; Esri',
+                    maxZoom: 18
+                }).addTo(mapa);
+            }
+            setTimeout(() => mapa.invalidateSize(), 200); // Ajusta o tamanho
+        }
+
+        // ATUALIZAR OVERLAYS NO MAPA
+        function atualizarMapa() {
+            if (!mapa) return;
+
+            // Limpa camadas anteriores (mantendo o fundo)
+            mapa.eachLayer(layer => {
+                if (layer instanceof L.GeoJSON || layer instanceof L.ImageOverlay) {
+                    mapa.removeLayer(layer);
+                }
+            });
+
+            const checkboxes = document.querySelectorAll('.check-talhao:checked');
+            let datasEncontradas = new Set();
+
+            if (checkboxes.length === 0) {
+                document.getElementById('barra-data').innerText = 'Selecione talhões e aguarde...';
+                return;
+            }
+
+            checkboxes.forEach(cb => {
+                const talhao = dadosTalhoes.find(t => t.id === cb.value);
+                if (!talhao || !talhao.geom) return;
+
+                try {
+                    const geojson = typeof talhao.geom === 'string' ? JSON.parse(talhao.geom) : talhao.geom;
+                    
+                    // Adiciona o contorno branco do talhão
+                    L.geoJSON(geojson, {
+                        style: { color: 'white', weight: 2, fillOpacity: 0 }
+                    }).addTo(mapa);
+
+                    // Adiciona a imagem NDVI sobre o talhão
+                    if (talhao.imagem_ndvi) {
+                        const bounds = L.geoJSON(geojson).getBounds();
+                        const imageUrl = `data:image/png;base64,${talhao.imagem_ndvi}`;
+                        L.imageOverlay(imageUrl, bounds, { opacity: 0.9 }).addTo(mapa);
+                    }
+
+                    if (talhao.data_ndvi) datasEncontradas.add(talhao.data_ndvi);
+
+                } catch (e) {
+                    console.error("Erro ao renderizar talhão:", talhao.codigo_talhao, e);
+                }
+            });
+
+            // Ajusta visualização do mapa para os talhões selecionados
+            const grupo = L.featureGroup();
+            checkboxes.forEach(cb => {
+                const talhao = dadosTalhoes.find(t => t.id === cb.value);
+                if (talhao && talhao.geom) {
+                    const geojson = typeof talhao.geom === 'string' ? JSON.parse(talhao.geom) : talhao.geom;
+                    L.geoJSON(geojson).addTo(grupo);
+                }
+            });
+            if (checkboxes.length > 0) mapa.fitBounds(grupo.getBounds().pad(0.2));
+
+            // Atualiza barra de data
+            const textoData = Array.from(datasasEncontradas).join(' | ');
+            document.getElementById('barra-data').innerText = textoData ? `Imagens de: ${textoData}` : 'Data indisponível';
+        }
+
+        // DESLOGAR
+        async function deslogar() {
+            await supabaseClient.auth.signOut();
+            clienteId = null;
+            dadosTalhoes = [];
+            mostrarTela('login');
+        }
+    </script>
+</body>
+</html>
