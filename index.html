@@ -31,6 +31,7 @@
         .login-box button:hover { background: #1a472a; }
         .login-box a { color: #25D366; text-decoration: none; font-weight: bold; }
         #msg-erro-login { color: red; margin-top: 15px; font-size: 14px; min-height: 20px; }
+        .dica-login { font-size: 12px; color: #888; margin-top: -5px; text-align: left; width: 100%; }
 
         /* TELA DO APP */
         #tela-app { display: none; flex: 1; flex-direction: column; height: 100vh; }
@@ -76,7 +77,8 @@
     <div id="tela-login">
         <div class="login-box">
             <h2>📈 Mapa NDVI</h2>
-            <input type="text" id="campo-whatsapp" placeholder="Seu WhatsApp (somente números)" maxlength="15">
+            <input type="text" id="campo-whatsapp" placeholder="Seu WhatsApp (ex: 17997927252)" maxlength="15">
+            <p class="dica-login">Dica: Digite DDD + Número (11 dígitos).</p>
             <button onclick="fazerLogin()">Entrar</button>
             <div id="msg-erro-login"></div>
             <p style="margin-top: 20px; font-size: 14px; color: #666;">
@@ -134,7 +136,6 @@
         window.onload = async () => {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
-                // Se já tem sessão, valida o acesso direto
                 const whatsapp = session.user.email.replace('@app.ndvi', '');
                 await validarAcessoELoadar(whatsapp);
             } else {
@@ -147,25 +148,40 @@
             document.getElementById('tela-app').style.display = tela === 'app' ? 'flex' : 'none';
         }
 
+        // NOVA FUNÇÃO: Padroniza o número de telefone
+        function padronizarWhatsapp(numero) {
+            let num = numero.replace(/\D/g, ''); // Remove letras, pontos e traços
+            
+            // Se digitou só os 9 números do celular, adiciona o DDD 17
+            if (num.length === 9) {
+                num = "17" + num;
+            }
+            // Se digitou 11 números (DDD + Celular) ou 13 (com código país), não mexe
+            
+            return num;
+        }
+
         // LÓGICA DE LOGIN
         async function fazerLogin() {
-            const inputWhatsapp = document.getElementById('campo-whatsapp').value.replace(/\D/g, '');
             const msgErro = document.getElementById('msg-erro-login');
             
-            if (inputWhatsapp.length < 10) {
-                msgErro.innerText = "Digite um WhatsApp válido.";
+            // Padroniza o que o usuário digitou
+            const whatsappFormatado = padronizarWhatsapp(document.getElementById('campo-whatsapp').value);
+
+            if (whatsappFormatado.length < 11) {
+                msgErro.innerText = "Digite um número válido (DDD + Número).";
+                msgErro.style.color = "red";
                 return;
             }
 
             msgErro.innerText = "Verificando...";
             msgErro.style.color = "#666";
 
-            const emailFake = inputWhatsapp + "@app.ndvi";
-            // Supondo que a senha cadastrada no Supabase Auth seja o próprio número do WhatsApp
-            const senha = inputWhatsapp; 
+            // Monta o e-mail falso e usa o próprio número padronizado como senha (Opção 1)
+            const emailFake = whatsappFormatado + "@app.ndvi";
+            const senha = whatsappFormatado; 
 
             try {
-                // 1. Tenta logar
                 const { data, error } = await supabaseClient.auth.signInWithPassword({
                     email: emailFake,
                     password: senha
@@ -173,13 +189,12 @@
 
                 if (error) throw error;
 
-                // 2. Se logou, valida bloqueio e carrega
-                await validarAcessoELoadar(inputWhatsapp);
+                await validarAcessoELoadar(whatsappFormatado);
 
             } catch (error) {
                 msgErro.style.color = "red";
                 if (error.message.includes("Invalid login")) {
-                    msgErro.innerText = "WhatsApp ou senha incorretos.";
+                    msgErro.innerText = "Usuário ou senha incorretos.";
                 } else {
                     msgErro.innerText = "Erro: " + error.message;
                 }
@@ -204,7 +219,6 @@
                 return;
             }
 
-            // VERIFICA SE ESTÁ BLOQUEADO
             if (cliente.ativo === false) {
                 await supabaseClient.auth.signOut();
                 mostrarTela('login');
@@ -213,7 +227,6 @@
                 return;
             }
 
-            // TUDO OK - ENTRAR NO APP
             clienteId = cliente.id;
             msgErro.innerText = "";
             mostrarTela('app');
@@ -272,20 +285,19 @@
         // INICIAR MAPA LEAFLET
         function iniciarMapa() {
             if (!mapa) {
-                mapa = L.map('mapa').setView([-20.5, -49.5], 10); // Centro em SP
+                mapa = L.map('mapa').setView([-20.5, -49.5], 10);
                 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Tiles &copy; Esri',
                     maxZoom: 18
                 }).addTo(mapa);
             }
-            setTimeout(() => mapa.invalidateSize(), 200); // Ajusta o tamanho
+            setTimeout(() => mapa.invalidateSize(), 200);
         }
 
         // ATUALIZAR OVERLAYS NO MAPA
         function atualizarMapa() {
             if (!mapa) return;
 
-            // Limpa camadas anteriores (mantendo o fundo)
             mapa.eachLayer(layer => {
                 if (layer instanceof L.GeoJSON || layer instanceof L.ImageOverlay) {
                     mapa.removeLayer(layer);
@@ -307,12 +319,10 @@
                 try {
                     const geojson = typeof talhao.geom === 'string' ? JSON.parse(talhao.geom) : talhao.geom;
                     
-                    // Adiciona o contorno branco do talhão
                     L.geoJSON(geojson, {
                         style: { color: 'white', weight: 2, fillOpacity: 0 }
                     }).addTo(mapa);
 
-                    // Adiciona a imagem NDVI sobre o talhão
                     if (talhao.imagem_ndvi) {
                         const bounds = L.geoJSON(geojson).getBounds();
                         const imageUrl = `data:image/png;base64,${talhao.imagem_ndvi}`;
@@ -326,7 +336,6 @@
                 }
             });
 
-            // Ajusta visualização do mapa para os talhões selecionados
             const grupo = L.featureGroup();
             checkboxes.forEach(cb => {
                 const talhao = dadosTalhoes.find(t => t.id === cb.value);
@@ -337,8 +346,7 @@
             });
             if (checkboxes.length > 0) mapa.fitBounds(grupo.getBounds().pad(0.2));
 
-            // Atualiza barra de data
-            const textoData = Array.from(datasasEncontradas).join(' | ');
+            const textoData = Array.from(datasEncontradas).join(' | ');
             document.getElementById('barra-data').innerText = textoData ? `Imagens de: ${textoData}` : 'Data indisponível';
         }
 
