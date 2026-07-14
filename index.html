@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Mapa NDVI</title>
     
     <!-- Leaflet CSS -->
@@ -10,7 +10,7 @@
     
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
-        body { background-color: #f4f6f8; height: 100vh; display: flex; flex-direction: column; }
+        body { background-color: #f4f6f8; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
 
         /* TELA DE LOGIN */
         #tela-login {
@@ -34,40 +34,72 @@
         .dica-login { font-size: 12px; color: #888; margin-top: -5px; text-align: left; width: 100%; }
 
         /* TELA DO APP */
-        #tela-app { display: none; flex: 1; flex-direction: column; height: 100vh; }
+        #tela-app { display: none; flex: 1; flex-direction: column; height: 100vh; height: 100dvh; }
         
         /* CABEÇALHO */
         .header {
             background: #1a472a; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center;
+            z-index: 1000;
         }
-        .header h1 { font-size: 20px; }
-        .btn-logout { background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; }
+        .header h1 { font-size: 18px; }
+        .btn-logout { background: #dc3545; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; font-size: 14px; }
 
         /* CORPO (LISTA + MAPA) */
-        .corpo { display: flex; flex: 1; overflow: hidden; }
+        .corpo { display: flex; flex: 1; overflow: hidden; position: relative; }
         
-        /* PAINEL LATERAL */
+        /* PAINEL LATERAL (PC) */
         .painel-lateral {
-            width: 350px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column;
+            width: 320px; background: white; border-right: 1px solid #ddd; display: flex; flex-direction: column;
+            z-index: 900; transition: transform 0.3s ease;
         }
         .busca-container { padding: 15px; border-bottom: 1px solid #ddd; }
         .busca-container input {
-            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px;
+            width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px;
         }
         .botoes-acoes { padding: 10px 15px; display: flex; gap: 10px; border-bottom: 1px solid #ddd; }
         .botoes-acoes button {
             flex: 1; padding: 8px; border: 1px solid #ccc; background: #f8f9fa; border-radius: 5px; cursor: pointer; font-size: 13px;
         }
         #lista-talhoes { flex: 1; overflow-y: auto; padding: 10px; }
-        .item-talhao { padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center; }
-        .item-talhao label { margin-left: 10px; cursor: pointer; font-size: 15px; }
+        .item-talhao { padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; border-radius: 5px; cursor: pointer; }
+        .item-talhao:active { background-color: #f0f0f0; }
+        .item-talhao label { margin-left: 10px; cursor: pointer; font-size: 15px; user-select: none; }
+
+        /* BOTÃO FLUTUANTE MOBILE */
+        .btn-flutuante {
+            display: none; position: absolute; top: 10px; left: 10px; z-index: 1100;
+            background: #1a472a; color: white; border: none; width: 45px; height: 45px;
+            border-radius: 50%; font-size: 24px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            align-items: center; justify-content: center;
+        }
 
         /* MAPA */
         #mapa { flex: 1; background: #e9e9e9; position: relative; }
         
         /* BARRA DE DATA */
         #barra-data {
-            background: #333; color: white; text-align: center; padding: 10px; font-size: 14px;
+            background: #333; color: white; text-align: center; padding: 10px; font-size: 13px;
+            z-index: 1000;
+        }
+
+        /* RESPONSIVIDADE MOBILE */
+        @media (max-width: 768px) {
+            .btn-flutuante { display: flex; }
+            .painel-lateral {
+                position: absolute; top: 0; left: 0; height: 100%; width: 85%; max-width: 320px;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+                transform: translateX(-100%); /* Escondido por padrão */
+            }
+            .painel-lateral.aberto {
+                transform: translateX(0); /* Visível */
+            }
+            /* Fundo escuro ao abrir a gaveta */
+            .overlay-mobile {
+                display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.4); z-index: 800;
+            }
+            .overlay-mobile.visivel { display: block; }
+            .botoes-acoes { display: none; } /* Esconde no mobile para ganhar espaço */
         }
     </style>
 </head>
@@ -98,7 +130,13 @@
         </div>
         
         <div class="corpo">
-            <div class="painel-lateral">
+            <!-- Fundo escuro quando a lista está aberta no celular -->
+            <div class="overlay-mobile" id="overlay-mobile" onclick="fecharListaMobile()"></div>
+            
+            <!-- Botão que abre a lista no celular -->
+            <button class="btn-flutuante" id="btn-flutuante" onclick="abrirListaMobile()">☰</button>
+
+            <div class="painel-lateral" id="painel-lateral">
                 <div class="busca-container">
                     <input type="text" id="campo-busca" placeholder="Buscar talhão (ex: 70010)" oninput="filtrarLista()">
                 </div>
@@ -131,9 +169,21 @@
         let mapa = null;
         let dadosTalhoes = [];
         let clienteId = null;
+        let isMobile = window.innerWidth <= 768;
+
+        // CONTROLE DA GAVETA MOBILE
+        function abrirListaMobile() {
+            document.getElementById('painel-lateral').classList.add('aberto');
+            document.getElementById('overlay-mobile').classList.add('visivel');
+        }
+        function fecharListaMobile() {
+            document.getElementById('painel-lateral').classList.remove('aberto');
+            document.getElementById('overlay-mobile').classList.remove('visivel');
+        }
 
         // INICIALIZAÇÃO
         window.onload = async () => {
+            window.addEventListener('resize', () => { isMobile = window.innerWidth <= 768; });
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) {
                 const whatsapp = session.user.email.replace('@app.ndvi', '');
@@ -148,24 +198,14 @@
             document.getElementById('tela-app').style.display = tela === 'app' ? 'flex' : 'none';
         }
 
-        // NOVA FUNÇÃO: Padroniza o número de telefone
         function padronizarWhatsapp(numero) {
-            let num = numero.replace(/\D/g, ''); // Remove letras, pontos e traços
-            
-            // Se digitou só os 9 números do celular, adiciona o DDD 17
-            if (num.length === 9) {
-                num = "17" + num;
-            }
-            // Se digitou 11 números (DDD + Celular) ou 13 (com código país), não mexe
-            
+            let num = numero.replace(/\D/g, ''); 
+            if (num.length === 9) num = "17" + num;
             return num;
         }
 
-        // LÓGICA DE LOGIN
         async function fazerLogin() {
             const msgErro = document.getElementById('msg-erro-login');
-            
-            // Padroniza o que o usuário digitou
             const whatsappFormatado = padronizarWhatsapp(document.getElementById('campo-whatsapp').value);
 
             if (whatsappFormatado.length < 11) {
@@ -177,7 +217,6 @@
             msgErro.innerText = "Verificando...";
             msgErro.style.color = "#666";
 
-            // Monta o e-mail falso e usa o próprio número padronizado como senha (Opção 1)
             const emailFake = whatsappFormatado + "@app.ndvi";
             const senha = whatsappFormatado; 
 
@@ -188,20 +227,14 @@
                 });
 
                 if (error) throw error;
-
                 await validarAcessoELoadar(whatsappFormatado);
 
             } catch (error) {
                 msgErro.style.color = "red";
-                if (error.message.includes("Invalid login")) {
-                    msgErro.innerText = "Usuário ou senha incorretos.";
-                } else {
-                    msgErro.innerText = "Erro: " + error.message;
-                }
+                msgErro.innerText = error.message.includes("Invalid login") ? "Usuário ou senha incorretos." : "Erro: " + error.message;
             }
         }
 
-        // VALIDAÇÃO DE BLOQUEIO E CARREGAMENTO
         async function validarAcessoELoadar(whatsapp) {
             const msgErro = document.getElementById('msg-erro-login');
             
@@ -233,7 +266,6 @@
             buscarTalhoes();
         }
 
-        // BUSCAR TALHÕES NO BANCO
         async function buscarTalhoes() {
             const { data, error } = await supabaseClient
                 .from('talhoes')
@@ -248,7 +280,6 @@
             }
         }
 
-        // RENDERIZAR LISTA
         function renderizarLista(talhoes) {
             const container = document.getElementById('lista-talhoes');
             container.innerHTML = '';
@@ -265,14 +296,12 @@
             });
         }
 
-        // FILTRAR LISTA
         function filtrarLista() {
             const termo = document.getElementById('campo-busca').value.toLowerCase();
             const filtrados = dadosTalhoes.filter(t => t.codigo_talhao.toLowerCase().includes(termo));
             renderizarLista(filtrados);
         }
 
-        // MARCAR / DESMARCAR TODOS
         function marcarTodos() {
             document.querySelectorAll('.check-talhao').forEach(cb => cb.checked = true);
             atualizarMapa();
@@ -282,26 +311,35 @@
             atualizarMapa();
         }
 
-        // INICIAR MAPA LEAFLET
         function iniciarMapa() {
             if (!mapa) {
-                mapa = L.map('mapa').setView([-20.5, -49.5], 10);
+                mapa = L.map('mapa', { zoomControl: false }).setView([-20.5, -49.5], 10);
+                L.control.zoom({ position: 'topright' }).addTo(mapa); // Move zoom pro canto direito no mobile
                 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                     attribution: 'Tiles &copy; Esri',
                     maxZoom: 18
                 }).addTo(mapa);
             }
-            setTimeout(() => mapa.invalidateSize(), 200);
+            setTimeout(() => mapa.invalidateSize(), 300);
         }
 
-        // ATUALIZAR OVERLAYS NO MAPA
+        function calcularDiasAtras(dataStr) {
+            if (!dataStr) return "";
+            const dataImagem = new Date(dataStr + "T00:00:00");
+            const hoje = new Date();
+            hoje.setHours(0,0,0,0);
+            const dias = Math.floor((hoje - dataImagem) / (1000 * 60 * 60 * 24));
+            if (dias === 0) return "Hoje";
+            if (dias === 1) return "Ontem";
+            if (dias > 1) return `${dias} dias atrás`;
+            return `Em breve`;
+        }
+
         function atualizarMapa() {
             if (!mapa) return;
 
             mapa.eachLayer(layer => {
-                if (layer instanceof L.GeoJSON || layer instanceof L.ImageOverlay) {
-                    mapa.removeLayer(layer);
-                }
+                if (layer instanceof L.GeoJSON || layer instanceof L.ImageOverlay) mapa.removeLayer(layer);
             });
 
             const checkboxes = document.querySelectorAll('.check-talhao:checked');
@@ -319,9 +357,7 @@
                 try {
                     const geojson = typeof talhao.geom === 'string' ? JSON.parse(talhao.geom) : talhao.geom;
                     
-                    L.geoJSON(geojson, {
-                        style: { color: 'white', weight: 2, fillOpacity: 0 }
-                    }).addTo(mapa);
+                    L.geoJSON(geojson, { style: { color: 'white', weight: 2, fillOpacity: 0 } }).addTo(mapa);
 
                     if (talhao.imagem_ndvi) {
                         const bounds = L.geoJSON(geojson).getBounds();
@@ -330,10 +366,7 @@
                     }
 
                     if (talhao.data_ndvi) datasEncontradas.add(talhao.data_ndvi);
-
-                } catch (e) {
-                    console.error("Erro ao renderizar talhão:", talhao.codigo_talhao, e);
-                }
+                } catch (e) { console.error("Erro:", e); }
             });
 
             const grupo = L.featureGroup();
@@ -346,11 +379,20 @@
             });
             if (checkboxes.length > 0) mapa.fitBounds(grupo.getBounds().pad(0.2));
 
-            const textoData = Array.from(datasEncontradas).join(' | ');
-            document.getElementById('barra-data').innerText = textoData ? `Imagens de: ${textoData}` : 'Data indisponível';
+            if (datasEncontradas.size > 0) {
+                let textosFormatados = [];
+                datasEncontradas.forEach(data => textosFormatados.push(`${data} (${calcularDiasAtras(data)})`));
+                document.getElementById('barra-data').innerText = "Imagens de: " + textosFormatados.join(' | ');
+            } else {
+                document.getElementById('barra-data').innerText = 'Data indisponível';
+            }
+
+            // NOVIDADE: Fecha a gaveta automaticamente no celular após seleção
+            if (isMobile) {
+                fecharListaMobile();
+            }
         }
 
-        // DESLOGAR
         async function deslogar() {
             await supabaseClient.auth.signOut();
             clienteId = null;
