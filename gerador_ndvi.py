@@ -7,6 +7,7 @@ Roda no GitHub Actions via .github/workflows/atualiza-ndvi.yml
 import io
 import os
 import json
+import time
 import base64
 
 import requests
@@ -58,36 +59,45 @@ def bbox_do_anel(anel):
 
 
 def bbox_wkt(bbox):
-    """Converte o bbox em WKT compacto (formato dos exemplos oficiais da API)."""
+    """Converte o bbox em WKT compacto (4 pontos, fechado)."""
     minx, miny, maxx, maxy = bbox
     return (f"POLYGON(({minx} {miny},{maxx} {miny},"
             f"{maxx} {maxy},{minx} {maxy},{minx} {miny}))")
 
 
 def ultima_cena(wkt, depois_de):
-    """Busca no catalogo Copernicus a cena Sentinel-2 L2A mais recente
-    sobre a area, com nuvem abaixo do limite, posterior a depois_de.
-    Monta a URL como texto completo para que os espacos virem %20
-    (o servidor do catalogo NAO aceita espacos codificados como '+')."""
-    filtros = [
-        "Collection/Name eq 'SENTINEL-2'",
-        "contains(Name,'MSIL2A')",
-        f"OData.CSC.Intersects(area=geography'SRID=4326;{wkt}')",
-        (f"Attributes/OData.CSC.DoubleAttribute/any("
-         f"att:att/Name eq 'CloudCover' and "
-         f"att/OData.CSC.DoubleAttribute/Value lt {CLOUD_COVER_MAX})"),
-        f"ContentDate/Start gt {depois_de}T00:00:00.000Z",
-    ]
-    filtro = " and ".join(filtros)
+    """Busca as 10 cenas mais recentes sobre a area (com atributos incluidos)
+    e escolhe a mais nova com nuvem abaixo do limite.
+    A comparacao do nome do atributo ignora maiusculas/minusculas —
+    elimina o erro 'Invalid field: CloudCover'."""
+    filtro = (
+        "Collection/Name eq 'SENTINEL-2'"
+        " and contains(Name,'MSIL2A')"
+        f" and OData.CSC.Intersects(area=geography'SRID=4326;{wkt}')"
+        f" and ContentDate/Start gt {depois_de}T00:00:00.000Z"
+    )
     url = ("https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
-           f"?$filter={filtro}&$orderby=ContentDate/Start desc&$top=1")
+           f"?$filter={filtro}"
+           "&$orderby=ContentDate/Start desc"
+           "&$top=10"
+           "&$expand=Attributes")
 
     r = requests.get(url, timeout=60)
     if r.status_code != 200:
-        # Agora o erro mostra a MENSAGEM do servidor — diagnostico direto
         raise RuntimeError(f"Catalogo {r.status_code}: {r.text[:300]}")
-    v = r.json().get("value", [])
-    return v[0]["ContentDate"]["Start"][:10] if v else None
+
+    for p in r.json().get("value", []):
+        cobertura = None
+        for attr in p.get("Attributes", []):
+            if str(attr.get("Name", "")).lower() == "cloudcover":
+                try:
+                    cobertura = float(attr.get("Value"))
+                except (TypeError, ValueError):
+                    cobertura = None
+                break
+        if cobertura is None or cobertura < CLOUD_COVER_MAX:
+            return p["ContentDate"]["Start"][:10]
+    return None
 
 
 EVALSCRIPT = """
@@ -152,8 +162,7 @@ def gerar_png_ndvi(token, bbox, data_cena):
 
 
 def recortar_no_poligono(png_bytes, aneis, bbox):
-    """Aplica mascara alpha deixando visivel apenas a area do poligono.
-    Usa o poligono COMPLETO (com todos os vertices) — o recorte continua preciso."""
+    """Aplica mascara alpha deixando visivel apenas a area do poligono."""
     minx, miny, maxx, maxy = bbox
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     w, h = img.size
@@ -203,7 +212,6 @@ def main():
             bbox = bbox_do_anel(aneis[0])
             depois = (t.get("data_ndvi") or "2020-01-01")[:10]
 
-            # Busca usa o RETANGULO envolvente (4 pontos) para nao estourar a URL
             cena = ultima_cena(bbox_wkt(bbox), depois)
             if not cena:
                 print(f"[{nome}] ja esta em dia.")
@@ -216,8 +224,18 @@ def main():
             print(f"[{nome}] ATUALIZADO com imagem de {cena}")
         except Exception as e:
             print(f"[{nome}] ERRO: {e}")
+        finally:
+            time.sleep(1.0)  # respeita o limite de requisicoes da API
 
     print(f"\nConcluido. {atualizados} talhao(ns) atualizado(s).")
+
+    try:
+        verif = sb.table("talhoes").select(
+            "id", count="exact"
+        ).not_.is_("data_ndvi", "null").execute()
+        print(f"Verificacao final: {verif.count} talhoes com data_ndvi preenchida no banco.")
+    except Exception as e:
+        print(f"(Nao foi possivel rodar a verificacao final: {e})")
 
 
 if __name__ == "__main__":
