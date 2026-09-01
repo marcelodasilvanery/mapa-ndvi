@@ -58,8 +58,7 @@ def bbox_do_anel(anel):
 
 
 def bbox_wkt(bbox):
-    """Converte o bbox (retangulo envolvente) em WKT com apenas 4 pontos.
-    Usado na busca do catalogo para nao estourar o limite de tamanho da URL."""
+    """Converte o bbox (retangulo envolvente) em WKT com apenas 4 pontos."""
     minx, miny, maxx, maxy = bbox
     return (f"POLYGON(({minx} {miny}, {maxx} {miny}, "
             f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny}))")
