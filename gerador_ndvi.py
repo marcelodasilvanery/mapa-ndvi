@@ -57,14 +57,17 @@ def bbox_do_anel(anel):
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def wkt_do_anel(anel):
-    pts = ", ".join(f"{x} {y}" for x, y in anel)
-    return f"POLYGON(({pts}))"
+def bbox_wkt(bbox):
+    """Converte o bbox (retangulo envolvente) em WKT com apenas 4 pontos.
+    Usado na busca do catalogo para nao estourar o limite de tamanho da URL."""
+    minx, miny, maxx, maxy = bbox
+    return (f"POLYGON(({minx} {miny}, {maxx} {miny}, "
+            f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny}))")
 
 
 def ultima_cena(wkt, depois_de):
     """Busca no catalogo Copernicus a cena Sentinel-2 L2A mais recente
-    sobre o poligono, com nuvem abaixo do limite, posterior a depois_de."""
+    sobre a area, com nuvem abaixo do limite, posterior a depois_de."""
     filtros = [
         "Collection/Name eq 'SENTINEL-2'",
         "contains(Name,'MSIL2A')",
@@ -150,7 +153,8 @@ def gerar_png_ndvi(token, bbox, data_cena):
 
 
 def recortar_no_poligono(png_bytes, aneis, bbox):
-    """Aplica mascara alpha deixando visivel apenas a area do poligono."""
+    """Aplica mascara alpha deixando visivel apenas a area do poligono.
+    Usa o poligono COMPLETO (com todos os vertices) — o recorte continua preciso."""
     minx, miny, maxx, maxy = bbox
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     w, h = img.size
@@ -200,7 +204,8 @@ def main():
             bbox = bbox_do_anel(aneis[0])
             depois = (t.get("data_ndvi") or "2020-01-01")[:10]
 
-            cena = ultima_cena(wkt_do_anel(aneis[0]), depois)
+            # Busca usa o RETANGULO envolvente (4 pontos) para nao estourar a URL
+            cena = ultima_cena(bbox_wkt(bbox), depois)
             if not cena:
                 print(f"[{nome}] ja esta em dia.")
                 continue
