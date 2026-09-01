@@ -58,15 +58,17 @@ def bbox_do_anel(anel):
 
 
 def bbox_wkt(bbox):
-    """Converte o bbox (retangulo envolvente) em WKT com apenas 4 pontos."""
+    """Converte o bbox em WKT compacto (formato dos exemplos oficiais da API)."""
     minx, miny, maxx, maxy = bbox
-    return (f"POLYGON(({minx} {miny}, {maxx} {miny}, "
-            f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny}))")
+    return (f"POLYGON(({minx} {miny},{maxx} {miny},"
+            f"{maxx} {maxy},{minx} {maxy},{minx} {miny}))")
 
 
 def ultima_cena(wkt, depois_de):
     """Busca no catalogo Copernicus a cena Sentinel-2 L2A mais recente
-    sobre a area, com nuvem abaixo do limite, posterior a depois_de."""
+    sobre a area, com nuvem abaixo do limite, posterior a depois_de.
+    Monta a URL como texto completo para que os espacos virem %20
+    (o servidor do catalogo NAO aceita espacos codificados como '+')."""
     filtros = [
         "Collection/Name eq 'SENTINEL-2'",
         "contains(Name,'MSIL2A')",
@@ -76,16 +78,14 @@ def ultima_cena(wkt, depois_de):
          f"att/OData.CSC.DoubleAttribute/Value lt {CLOUD_COVER_MAX})"),
         f"ContentDate/Start gt {depois_de}T00:00:00.000Z",
     ]
-    r = requests.get(
-        "https://catalogue.dataspace.copernicus.eu/odata/v1/Products",
-        params={
-            "$filter": " and ".join(filtros),
-            "$orderby": "ContentDate/Start desc",
-            "$top": "1",
-        },
-        timeout=60,
-    )
-    r.raise_for_status()
+    filtro = " and ".join(filtros)
+    url = ("https://catalogue.dataspace.copernicus.eu/odata/v1/Products"
+           f"?$filter={filtro}&$orderby=ContentDate/Start desc&$top=1")
+
+    r = requests.get(url, timeout=60)
+    if r.status_code != 200:
+        # Agora o erro mostra a MENSAGEM do servidor — diagnostico direto
+        raise RuntimeError(f"Catalogo {r.status_code}: {r.text[:300]}")
     v = r.json().get("value", [])
     return v[0]["ContentDate"]["Start"][:10] if v else None
 
