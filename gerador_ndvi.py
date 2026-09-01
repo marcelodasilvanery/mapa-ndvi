@@ -16,8 +16,8 @@ from supabase import create_client
 # ================== CONFIGURACAO ==================
 SUPABASE_URL       = "https://keiydgyountsuzjybsng.supabase.co"
 SUPABASE_KEY       = os.environ["SUPABASE_KEY"]
-CDSE_CLIENT_ID     = os.environ["sh-1fb6ec60-0c8b-456d-8697-65fcb5b06b72"]
-CDSE_CLIENT_SECRET = os.environ["GApfmKrKzpyNQtuXUsL6rk1jbbvCHMum"]
+CDSE_CLIENT_ID     = os.environ["CDSE_CLIENT_ID"]
+CDSE_CLIENT_SECRET = os.environ["CDSE_CLIENT_SECRET"]
 CLOUD_COVER_MAX = 30      # % maximo de nuvem aceito
 IMG_SIZE = 512            # resolucao do PNG gerado
 # ==================================================
