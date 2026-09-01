@@ -1,0 +1,28 @@
+name: Atualiza NDVI
+
+on:
+  schedule:
+    - cron: '0 12 */2 * *'   # a cada 2 dias, as 09h (horario de Brasilia)
+  workflow_dispatch:          # permite rodar manualmente pelo botao
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar bibliotecas
+        run: pip install requests pillow supabase
+
+      - name: Gerar e gravar NDVI
+        run: python gerador_ndvi.py
+        env:
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          CDSE_CLIENT_ID: ${{ secrets.CDSE_CLIENT_ID }}
+          CDSE_CLIENT_SECRET: ${{ secrets.CDSE_CLIENT_SECRET }}
