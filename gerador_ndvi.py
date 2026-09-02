@@ -21,11 +21,19 @@ CDSE_CLIENT_ID     = os.environ["CDSE_CLIENT_ID"]
 CDSE_CLIENT_SECRET = os.environ["CDSE_CLIENT_SECRET"]
 CLOUD_COVER_MAX = 30      # % maximo de nuvem aceito
 IMG_SIZE = 512            # resolucao do PNG gerado
+TOKEN_VIDA_UTILITY = 3000 # renova o token apos 50 min (ele dura ~60 min)
 # ==================================================
 
+_token = {"valor": None, "emitido_em": 0.0}
 
-def get_token():
-    """Autentica no Copernicus Data Space e retorna o token de acesso."""
+
+def get_token(forcar=False):
+    """Retorna o token em cache se ainda estiver valido; senao, emite um novo."""
+    agora = time.time()
+    if (not forcar and _token["valor"] is not None
+            and (agora - _token["emitido_em"]) < TOKEN_VIDA_UTILITY):
+        return _token["valor"]
+
     r = requests.post(
         "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
         data={
@@ -36,7 +44,10 @@ def get_token():
         timeout=30,
     )
     r.raise_for_status()
-    return r.json()["access_token"]
+    _token["valor"] = r.json()["access_token"]
+    _token["emitido_em"] = agora
+    print(">>> Token do Copernicus renovado.")
+    return _token["valor"]
 
 
 def extrair_poligono(g):
@@ -67,9 +78,7 @@ def bbox_wkt(bbox):
 
 def ultima_cena(wkt, depois_de):
     """Busca as 10 cenas mais recentes sobre a area (com atributos incluidos)
-    e escolhe a mais nova com nuvem abaixo do limite.
-    A comparacao do nome do atributo ignora maiusculas/minusculas —
-    elimina o erro 'Invalid field: CloudCover'."""
+    e escolhe a mais nova com nuvem abaixo do limite."""
     filtro = (
         "Collection/Name eq 'SENTINEL-2'"
         " and contains(Name,'MSIL2A')"
@@ -82,7 +91,7 @@ def ultima_cena(wkt, depois_de):
            "&$top=10"
            "&$expand=Attributes")
 
-    r = requests.get(url, timeout=60)
+    r = requests.get(url, timeout=90)
     if r.status_code != 200:
         raise RuntimeError(f"Catalogo {r.status_code}: {r.text[:300]}")
 
@@ -120,8 +129,9 @@ function evaluatePixel(s) {
 """
 
 
-def gerar_png_ndvi(token, bbox, data_cena):
-    """Chama a Process API do Copernicus e retorna os bytes do PNG colorido."""
+def gerar_png_ndvi(bbox, data_cena):
+    """Chama a Process API do Copernicus. Se der 401 (token expirado),
+    renova o token e tenta mais uma vez."""
     body = {
         "input": {
             "bounds": {
@@ -150,12 +160,19 @@ def gerar_png_ndvi(token, bbox, data_cena):
         },
         "evalscript": EVALSCRIPT,
     }
-    r = requests.post(
-        "https://sh.dataspace.copernicus.eu/api/v1/process",
-        json=body,
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=180,
-    )
+
+    for tentativa in (1, 2):
+        r = requests.post(
+            "https://sh.dataspace.copernicus.eu/api/v1/process",
+            json=body,
+            headers={"Authorization": f"Bearer {get_token()}"},
+            timeout=180,
+        )
+        if r.status_code == 401 and tentativa == 1:
+            get_token(forcar=True)   # renova e tenta de novo
+            continue
+        break
+
     if r.status_code != 200:
         raise RuntimeError(f"Process API {r.status_code}: {r.text[:200]}")
     return r.content
@@ -193,7 +210,7 @@ def salvar(sb, talhao_id, img, data_cena):
 def main():
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     print("Autenticando no Copernicus...")
-    token = get_token()
+    get_token()
 
     talhoes = sb.table("talhoes").select(
         "id, codigo_talhao, geom, data_ndvi"
@@ -217,7 +234,7 @@ def main():
                 print(f"[{nome}] ja esta em dia.")
                 continue
 
-            png = gerar_png_ndvi(token, bbox, cena)
+            png = gerar_png_ndvi(bbox, cena)
             img = recortar_no_poligono(png, aneis, bbox)
             salvar(sb, t["id"], img, cena)
             atualizados += 1
